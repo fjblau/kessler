@@ -49,30 +49,37 @@ export default function DetailPanel({ object }) {
       setDocLoading(false)
     }
 
-    const fetchOrbitalState = async () => {
+    const fetchSatelliteData = async () => {
       setLoading(true)
       setError(null)
       try {
-        const url = `/api/objects/${encodeURIComponent(object['Registration Number'])}/orbital-state`
-        const response = await fetch(url)
+        const identifier = object._mongodb_id || object['International Designator']
+        const response = await fetch(`/v2/satellite/${encodeURIComponent(identifier)}`)
         if (!response.ok) {
-          const statusText = response.statusText || `HTTP ${response.status}`
-          throw new Error(statusText)
+          throw new Error(`HTTP ${response.status}`)
         }
         const data = await response.json()
-        setOrbitalState(data)
-        if (data.error) {
-          setError(data.error)
+        
+        if (data.data) {
+          const canonical = data.data.canonical || {}
+          const orbit = canonical.orbit || {}
+          
+          setOrbitalState({
+            orbital_state: orbit,
+            norad_id: canonical.norad_cat_id,
+            n2yo_url: canonical.norad_cat_id ? `https://www.n2yo.com/satellite/?s=${canonical.norad_cat_id}` : null,
+            tracking_available: !!canonical.norad_cat_id
+          })
         }
       } catch (err) {
-        console.error('Orbital state fetch error:', err)
-        setError(`Error fetching orbital data: ${err.message}`)
+        console.error('Satellite data fetch error:', err)
+        setError(`Error fetching satellite data: ${err.message}`)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchOrbitalState()
+    fetchSatelliteData()
   }, [object])
 
   useEffect(() => {

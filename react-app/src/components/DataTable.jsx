@@ -19,17 +19,25 @@ export default function DataTable({ objects, selectedObject, onRowClick, loading
             <th>Country of Origin</th>
             <th>Date of Launch</th>
             <th>Status</th>
-            <th>Apogee (km)</th>
-            <th>Perigee (km)</th>
-            <th>Inclination (°)</th>
-            <th>Period (min)</th>
+            <th className="cell-number">Apogee (km)</th>
+            <th className="cell-number">Perigee (km)</th>
+            <th className="cell-number">Inclination (°)</th>
+            <th className="cell-number">Period (min)</th>
           </tr>
         </thead>
         <tbody>
-          {objects.map((obj) => (
+          {objects.map((obj) => {
+            const classNames = []
+            if (selectedObject?.['Registration Number'] === obj['Registration Number']) {
+              classNames.push('selected')
+            }
+            if (obj['Status'] === 'decayed') {
+              classNames.push('decayed')
+            }
+            return (
             <tr 
               key={obj['Registration Number']}
-              className={selectedObject?.['Registration Number'] === obj['Registration Number'] ? 'selected' : ''}
+              className={classNames.join(' ')}
               onClick={() => onRowClick(obj)}
             >
               <td className="cell-reg">{obj['Registration Number']}</td>
@@ -42,7 +50,8 @@ export default function DataTable({ objects, selectedObject, onRowClick, loading
               <td className="cell-number">{obj['Inclination (degrees)'] ? obj['Inclination (degrees)'].toFixed(2) : '—'}</td>
               <td className="cell-number">{obj['Period (minutes)'] ? obj['Period (minutes)'].toFixed(2) : '—'}</td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>

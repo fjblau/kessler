@@ -55,15 +55,15 @@ export default function Filters({ filters, filterOptions, onFilterChange }) {
       </div>
 
       <div className="filter-group">
-        <label htmlFor="function">Function</label>
+        <label htmlFor="status">Status</label>
         <select
-          id="function"
-          value={localFilters.function || ''}
-          onChange={(e) => handleChange('function', e.target.value)}
+          id="status"
+          value={localFilters.status || ''}
+          onChange={(e) => handleChange('status', e.target.value)}
         >
-          <option value="">All Functions</option>
-          {filterOptions.functions?.map(func => (
-            <option key={func} value={func}>{func}</option>
+          <option value="">All Statuses</option>
+          {filterOptions.statuses?.map(status => (
+            <option key={status} value={status}>{status}</option>
           ))}
         </select>
       </div>

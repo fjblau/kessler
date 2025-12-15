@@ -48,6 +48,15 @@
   font-weight: 500;
 }
 
+.data-table tbody tr.decayed {
+  background: #ffcccc;
+  color: #660000;
+}
+
+.data-table tbody tr.decayed td {
+  color: #660000;
+}
+
 .cell-reg {
   font-family: 'Courier New', monospace;
   font-weight: 500;
@@ -62,8 +71,12 @@
 }
 
 .cell-number {
-  text-align: right;
+  text-align: center;
   font-family: 'Courier New', monospace;
+}
+
+th.cell-number {
+  text-align: center;
 }
 
 .loading {

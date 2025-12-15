@@ -26,9 +26,20 @@ function App() {
 
   const fetchFilterOptions = async () => {
     try {
-      const response = await fetch('/api/filters')
-      const data = await response.json()
-      setFilterOptions(data)
+      const [countriesRes, statusesRes] = await Promise.all([
+        fetch('/v2/countries'),
+        fetch('/v2/statuses')
+      ])
+      const countriesData = await countriesRes.json()
+      const statusesData = await statusesRes.json()
+      
+      setFilterOptions({
+        countries: countriesData.countries || [],
+        statuses: statusesData.statuses || [],
+        apogee_range: [0, 100000],
+        perigee_range: [0, 100000],
+        inclination_range: [0, 180]
+      })
     } catch (error) {
       console.error('Error fetching filters:', error)
     }
@@ -38,24 +49,47 @@ function App() {
     setLoading(true)
     const params = new URLSearchParams()
     
-    if (filters.search) params.append('search', filters.search)
+    if (filters.search) params.append('q', filters.search)
     if (filters.country) params.append('country', filters.country)
-    if (filters.function) params.append('function', filters.function)
-    if (filters.apogee_min !== undefined) params.append('apogee_min', filters.apogee_min)
-    if (filters.apogee_max !== undefined) params.append('apogee_max', filters.apogee_max)
-    if (filters.perigee_min !== undefined) params.append('perigee_min', filters.perigee_min)
-    if (filters.perigee_max !== undefined) params.append('perigee_max', filters.perigee_max)
-    if (filters.inclination_min !== undefined) params.append('inclination_min', filters.inclination_min)
-    if (filters.inclination_max !== undefined) params.append('inclination_max', filters.inclination_max)
+    if (filters.status) params.append('status', filters.status)
     
     params.append('skip', pageNum * limit)
     params.append('limit', limit)
 
     try {
-      const response = await fetch(`/api/objects?${params}`)
+      const response = await fetch(`/v2/search?${params}`)
       const data = await response.json()
-      setObjects(data.data)
-      setTotal(data.total)
+      
+      const objects = data.data.map(item => {
+        const canonical = item.canonical || {}
+        const orbit = canonical.orbit || {}
+        
+        return {
+          'Registration Number': canonical.registration_number || '',
+          'Object Name': canonical.object_name || canonical.name || '',
+          'International Designator': canonical.international_designator || '',
+          'Country of Origin': canonical.country_of_origin || '',
+          'Date of Launch': canonical.date_of_launch || '',
+          'Function': canonical.function || '',
+          'Status': canonical.status || '',
+          'Apogee (km)': orbit.apogee_km,
+          'Perigee (km)': orbit.perigee_km,
+          'Inclination (degrees)': orbit.inclination_degrees,
+          'Period (minutes)': orbit.period_minutes,
+          'UN Registered': canonical.un_registered || '',
+          'GSO Location': canonical.gso_location || '',
+          'Secretariat Remarks': canonical.secretariat_remarks || '',
+          'External Website': canonical.external_website || '',
+          'Launch Vehicle': canonical.launch_vehicle || '',
+          'Place of Launch': canonical.place_of_launch || '',
+          'Registration Document': canonical.registration_document || '',
+          '_mongodb_id': item.identifier,
+          '_norad_id': canonical.norad_cat_id
+        }
+      })
+      
+      setObjects(objects)
+      setTotal(data.count)
       setPage(pageNum)
       setSelectedObject(null)
     } catch (error) {
