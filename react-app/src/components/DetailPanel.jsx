@@ -21,6 +21,9 @@ export default function DetailPanel({ object }) {
       return
     }
 
+    setDocMetadata(null)
+    setMetadataLoading(false)
+
     if (object['Registration Document']) {
       const fetchDocLink = async () => {
         setDocLoading(true)
@@ -44,8 +47,6 @@ export default function DetailPanel({ object }) {
     } else {
       setDocLink(null)
       setDocLoading(false)
-      setDocMetadata(null)
-      setMetadataLoading(false)
     }
 
     const fetchOrbitalState = async () => {
@@ -75,7 +76,7 @@ export default function DetailPanel({ object }) {
   }, [object])
 
   useEffect(() => {
-    if (docLink && !docMetadata && !metadataLoading) {
+    if (docLink) {
       const fetchMetadata = async () => {
         setMetadataLoading(true)
         try {
@@ -94,7 +95,7 @@ export default function DetailPanel({ object }) {
       }
       fetchMetadata()
     }
-  }, [docLink, docMetadata, metadataLoading])
+  }, [docLink])
 
   if (!object) {
     return (
@@ -201,34 +202,56 @@ export default function DetailPanel({ object }) {
           )}
           {!loading && !orbitalState?.orbital_state && (
             <>
+              {(object['Apogee (km)'] || docMetadata?.metadata?.apogee_km) && (
+                <div className="detail-row">
+                  <span className="detail-label">Data Source</span>
+                  <span className="detail-value">
+                    {docMetadata?.metadata?.apogee_km && !object['Apogee (km)'] ? 'From registration document' : 'Static registry'}
+                  </span>
+                </div>
+              )}
               <div className="detail-row">
                 <span className="detail-label">Apogee</span>
                 <span className="detail-value">
-                  {object['Apogee (km)'] ? `${formatValue(object['Apogee (km)'])} km` : '—'}
+                  {object['Apogee (km)'] ? `${formatValue(object['Apogee (km)'])} km` : (docMetadata?.metadata?.apogee_km ? `${formatValue(docMetadata.metadata.apogee_km)} km` : '—')}
                 </span>
               </div>
               <div className="detail-row">
                 <span className="detail-label">Perigee</span>
                 <span className="detail-value">
-                  {object['Perigee (km)'] ? `${formatValue(object['Perigee (km)'])} km` : '—'}
+                  {object['Perigee (km)'] ? `${formatValue(object['Perigee (km)'])} km` : (docMetadata?.metadata?.perigee_km ? `${formatValue(docMetadata.metadata.perigee_km)} km` : '—')}
                 </span>
               </div>
               <div className="detail-row">
                 <span className="detail-label">Inclination</span>
                 <span className="detail-value">
-                  {object['Inclination (degrees)'] ? `${formatValue(object['Inclination (degrees)'])}°` : '—'}
+                  {object['Inclination (degrees)'] ? `${formatValue(object['Inclination (degrees)'])}°` : (docMetadata?.metadata?.inclination_degrees ? `${formatValue(docMetadata.metadata.inclination_degrees)}°` : '—')}
                 </span>
               </div>
               <div className="detail-row">
                 <span className="detail-label">Period</span>
                 <span className="detail-value">
-                  {object['Period (minutes)'] ? `${formatValue(object['Period (minutes)'])} minutes` : '—'}
+                  {object['Period (minutes)'] ? `${formatValue(object['Period (minutes)'])} minutes` : (docMetadata?.metadata?.nodal_period_minutes ? `${formatValue(docMetadata.metadata.nodal_period_minutes)} minutes` : '—')}
                 </span>
               </div>
             </>
           )}
           {error && <p className="detail-error">{error}</p>}
         </div>
+
+        {orbitalState?.n2yo_url && (
+          <div className="detail-section">
+            <h3>Live Tracking</h3>
+            <a 
+              href={orbitalState.n2yo_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="detail-link"
+            >
+              Track on N2YO (NORAD {orbitalState.norad_id})
+            </a>
+          </div>
+        )}
 
         {object['GSO Location'] && (
           <div className="detail-section">
@@ -293,6 +316,35 @@ export default function DetailPanel({ object }) {
                       <div className="detail-row">
                         <span className="detail-label">Place of Launch (from document)</span>
                         <span className="detail-value">{docMetadata.metadata.place_of_launch}</span>
+                      </div>
+                    )}
+                    {(docMetadata.metadata.apogee_km || docMetadata.metadata.perigee_km || docMetadata.metadata.inclination_degrees || docMetadata.metadata.nodal_period_minutes) && (orbitalState?.orbital_state || object['Apogee (km)']) && (
+                      <div className="document-orbital-params">
+                        <h4>Orbital Parameters (from document)</h4>
+                        {docMetadata.metadata.apogee_km && (
+                          <div className="detail-row">
+                            <span className="detail-label">Apogee</span>
+                            <span className="detail-value">{docMetadata.metadata.apogee_km} km</span>
+                          </div>
+                        )}
+                        {docMetadata.metadata.perigee_km && (
+                          <div className="detail-row">
+                            <span className="detail-label">Perigee</span>
+                            <span className="detail-value">{docMetadata.metadata.perigee_km} km</span>
+                          </div>
+                        )}
+                        {docMetadata.metadata.inclination_degrees && (
+                          <div className="detail-row">
+                            <span className="detail-label">Inclination</span>
+                            <span className="detail-value">{docMetadata.metadata.inclination_degrees}°</span>
+                          </div>
+                        )}
+                        {docMetadata.metadata.nodal_period_minutes && (
+                          <div className="detail-row">
+                            <span className="detail-label">Nodal Period</span>
+                            <span className="detail-value">{docMetadata.metadata.nodal_period_minutes} minutes</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

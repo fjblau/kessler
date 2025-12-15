@@ -136,6 +136,26 @@
   border-radius: 4px;
 }
 
+.document-orbital-params {
+  margin-top: 1em;
+  padding: 0.75em;
+  background: #e8f5e9;
+  border-radius: 3px;
+  border-left: 2px solid #2e7d32;
+}
+
+.document-orbital-params h4 {
+  margin: 0 0 0.75em 0;
+  font-size: 0.85em;
+  color: #2e7d32;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.document-orbital-params .detail-row {
+  font-size: 0.85em;
+}
+
 .detail-link-inline {
   color: #0066cc;
   text-decoration: none;

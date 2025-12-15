@@ -25,6 +25,10 @@ app.add_middleware(
 
 df = pd.read_csv("unoosa_registry.csv")
 
+norad_id_map = {
+    "2023-155H": "58023",
+}
+
 tle_cache = {}
 tle_cache_time = {}
 CACHE_TTL = 3600
@@ -50,7 +54,7 @@ def fetch_tle_data():
     
     for tle_url in tle_urls:
         try:
-            response = requests.get(tle_url, timeout=10)
+            response = requests.get(tle_url, timeout=5)
             if response.status_code == 200:
                 lines = response.text.split('\n')
                 i = 0
@@ -152,7 +156,7 @@ doc_metadata_cache_time = {}
 def fetch_english_doc_link(registry_doc_path: str) -> Optional[str]:
     """
     Fetch the actual English document link from UNOOSA registry page.
-    Registry URLs often point to Russian pages, but have English links.
+    Registry URLs often point to HTML pages that have links to PDFs.
     Also tries to correct common document ID errors.
     """
     if not registry_doc_path:
@@ -204,6 +208,18 @@ def fetch_english_doc_link(registry_doc_path: str) -> Optional[str]:
     match = re.search(r'stsgser\.e(\d{4})', registry_doc_path)
     if match:
         doc_id = int(match.group(1))
+        
+        pdf_path = f'/res/osoindex/data/documents/at/st/stsgser_e{doc_id:04d}_html/sere_{doc_id:04d}E.pdf'
+        pdf_url = f"https://www.unoosa.org{pdf_path}"
+        try:
+            response = requests.head(pdf_url, timeout=5)
+            if response.status_code == 200:
+                doc_link_cache[cache_key] = pdf_url
+                doc_link_cache_time[cache_key] = current_time
+                return pdf_url
+        except:
+            pass
+        
         for offset in [-10, -8, -6, -4, -2, -1, 1, 2, 4, 6, 8, 10]:
             corrected_id = doc_id + offset
             corrected_path = registry_doc_path.replace(f'stsgser.e{doc_id:04d}', f'stsgser.e{corrected_id:04d}')
@@ -212,6 +228,17 @@ def fetch_english_doc_link(registry_doc_path: str) -> Optional[str]:
                 doc_link_cache[cache_key] = result
                 doc_link_cache_time[cache_key] = current_time
                 return result
+            
+            pdf_path = f'/res/osoindex/data/documents/at/st/stsgser_e{corrected_id:04d}_html/sere_{corrected_id:04d}E.pdf'
+            pdf_url = f"https://www.unoosa.org{pdf_path}"
+            try:
+                response = requests.head(pdf_url, timeout=5)
+                if response.status_code == 200:
+                    doc_link_cache[cache_key] = pdf_url
+                    doc_link_cache_time[cache_key] = current_time
+                    return pdf_url
+            except:
+                pass
     
     doc_link_cache[cache_key] = None
     doc_link_cache_time[cache_key] = current_time
@@ -238,29 +265,53 @@ def extract_document_metadata(pdf_url: str) -> Optional[Dict]:
             
             metadata = {}
             
-            owner_match = re.search(r'Space object owner or operator\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
+            owner_match = re.search(r'Space object owner or operator[:;]?\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
             if owner_match:
                 owner = owner_match.group(1).strip()
                 if owner and len(owner) < 200 and owner.lower() not in ['website', 'launch vehicle', 'place of launch']:
                     metadata['owner_operator'] = owner
             
-            website_match = re.search(r'Website\s+(https?://[^\s\n]+|www\.[^\s\n/]+(?:/[^\s\n]*)?)', text, re.IGNORECASE)
+            website_match = re.search(r'Website[:;]?\s+(https?://[^\s\n]+|www\.[^\s\n/]+(?:/[^\s\n]*)?)', text, re.IGNORECASE)
             if website_match:
                 website = website_match.group(1).strip()
                 if website and len(website) < 300:
                     metadata['website'] = website
             
-            launch_vehicle_match = re.search(r'Launch vehicle\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
+            launch_vehicle_match = re.search(r'Launch vehicle[:;]?\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
             if launch_vehicle_match:
                 vehicle = launch_vehicle_match.group(1).strip()
                 if vehicle and len(vehicle) < 150 and vehicle.lower() not in ['website', 'owner', 'operator']:
                     metadata['launch_vehicle'] = vehicle
             
-            place_match = re.search(r'Place of launch\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
+            place_match = re.search(r'Place of launch[:;]?\s+([^\n]+?)(?:\n|$)', text, re.IGNORECASE)
             if place_match:
                 place = place_match.group(1).strip()
                 if place and len(place) < 150:
                     metadata['place_of_launch'] = place
+            
+            nodal_period_match = re.search(r'Nodal period[:;]?\s+([\d.]+)\s*minutes?', text, re.IGNORECASE)
+            if nodal_period_match:
+                period = nodal_period_match.group(1).strip()
+                if period:
+                    metadata['nodal_period_minutes'] = period
+            
+            inclination_match = re.search(r'Inclination[:;]?\s+([\d.]+)\s*degrees?', text, re.IGNORECASE)
+            if inclination_match:
+                incl = inclination_match.group(1).strip()
+                if incl:
+                    metadata['inclination_degrees'] = incl
+            
+            apogee_match = re.search(r'Apogee[:;]?\s+([\d.]+)\s*(?:km|kilometres)', text, re.IGNORECASE)
+            if apogee_match:
+                apogee = apogee_match.group(1).strip()
+                if apogee:
+                    metadata['apogee_km'] = apogee
+            
+            perigee_match = re.search(r'Perigee[:;]?\s+([\d.]+)\s*(?:km|kilometres)', text, re.IGNORECASE)
+            if perigee_match:
+                perigee = perigee_match.group(1).strip()
+                if perigee:
+                    metadata['perigee_km'] = perigee
             
             return metadata if metadata else None
     except Exception as e:
@@ -454,23 +505,6 @@ def get_orbital_state(registration_number: str):
             "data_source": "Static registry only"
         }
     
-    tle_data = fetch_tle_data()
-    found_tle = None
-    
-    norad_format = convert_to_norad_format(intl_designator)
-    if norad_format:
-        if norad_format in tle_data:
-            found_tle = tle_data[norad_format]
-        elif not norad_format[-1].isalpha():
-            for piece in 'ABCDEFGH':
-                candidate = norad_format + piece
-                if candidate in tle_data:
-                    found_tle = tle_data[candidate]
-                    break
-    
-    if not found_tle and intl_designator in tle_data:
-        found_tle = tle_data[intl_designator]
-    
     def get_value(val):
         return None if pd.isna(val) else val
     
@@ -484,23 +518,77 @@ def get_orbital_state(registration_number: str):
         "status": get_value(obj_data['Status']),
     }
     
-    if found_tle:
-        sat_name, tle_line1, tle_line2 = found_tle
-        orbital_params = calculate_orbital_state(tle_line1, tle_line2)
-        response["orbital_state"] = orbital_params
-        response["tle_source"] = "CelesTrak"
-        response["tracking_available"] = True
+    doc_metadata = None
+    has_complete_orbital_params = False
+    
+    if pd.notna(obj_data['Registration Document']) and obj_data['Registration Document']:
+        doc_link_result = resolve_document_link(obj_data['Registration Document'])
+        if doc_link_result.get('english_link'):
+            doc_metadata = extract_document_metadata(doc_link_result['english_link'])
+            if doc_metadata and all(k in doc_metadata for k in ['apogee_km', 'perigee_km', 'inclination_degrees', 'nodal_period_minutes']):
+                has_complete_orbital_params = True
+                response["orbital_state"] = {
+                    "apogee_km": float(doc_metadata['apogee_km']),
+                    "perigee_km": float(doc_metadata['perigee_km']),
+                    "inclination_degrees": float(doc_metadata['inclination_degrees']),
+                    "period_minutes": float(doc_metadata['nodal_period_minutes']),
+                    "data_source": "Registration document"
+                }
+    
+    if not has_complete_orbital_params:
+        tle_data = fetch_tle_data()
+        found_tle = None
+        norad_id = None
+        
+        norad_format = convert_to_norad_format(intl_designator)
+        if norad_format:
+            if norad_format in tle_data:
+                found_tle = tle_data[norad_format]
+                norad_id = norad_format
+            elif not norad_format[-1].isalpha():
+                for piece in 'ABCDEFGH':
+                    candidate = norad_format + piece
+                    if candidate in tle_data:
+                        found_tle = tle_data[candidate]
+                        norad_id = candidate
+                        break
+        
+        if not found_tle and intl_designator in tle_data:
+            found_tle = tle_data[intl_designator]
+            norad_id = intl_designator
+        
+        if found_tle:
+            sat_name, tle_line1, tle_line2 = found_tle
+            orbital_params = calculate_orbital_state(tle_line1, tle_line2)
+            response["orbital_state"] = orbital_params
+            response["tle_source"] = "CelesTrak"
+            response["tracking_available"] = True
+            response["norad_id"] = norad_id
+            if norad_id:
+                response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
+        else:
+            response["error"] = "TLE data not found (satellite may be inactive/decayed)"
+            response["tracking_available"] = False
+            if pd.notna(obj_data['Apogee (km)']):
+                response["orbital_state"] = {
+                    "apogee_km": float(obj_data['Apogee (km)']),
+                    "perigee_km": float(obj_data['Perigee (km)']),
+                    "inclination_degrees": float(obj_data['Inclination (degrees)']),
+                    "period_minutes": float(obj_data['Period (minutes)']),
+                    "data_source": "Static registry"
+                }
+            
+            if intl_designator in norad_id_map:
+                norad_id = norad_id_map[intl_designator]
+                response["norad_id"] = norad_id
+                response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
+                response["tracking_available"] = True
     else:
-        response["error"] = "TLE data not found (satellite may be inactive/decayed)"
-        response["tracking_available"] = False
-        if pd.notna(obj_data['Apogee (km)']):
-            response["orbital_state"] = {
-                "apogee_km": float(obj_data['Apogee (km)']),
-                "perigee_km": float(obj_data['Perigee (km)']),
-                "inclination_degrees": float(obj_data['Inclination (degrees)']),
-                "period_minutes": float(obj_data['Period (minutes)']),
-                "data_source": "Static registry"
-            }
+        if intl_designator in norad_id_map:
+            norad_id = norad_id_map[intl_designator]
+            response["norad_id"] = norad_id
+            response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
+            response["tracking_available"] = True
     
     orbital_state_cache[registration_number] = response
     orbital_state_cache_time[registration_number] = current_time
