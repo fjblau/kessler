@@ -1,6 +1,101 @@
+import { useState, useEffect } from 'react'
 import './DetailPanel.css'
 
 export default function DetailPanel({ object }) {
+  const [orbitalState, setOrbitalState] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [docLink, setDocLink] = useState(null)
+  const [docLoading, setDocLoading] = useState(false)
+  const [docMetadata, setDocMetadata] = useState(null)
+  const [metadataLoading, setMetadataLoading] = useState(false)
+
+  useEffect(() => {
+    if (!object) {
+      setOrbitalState(null)
+      setError(null)
+      setDocLink(null)
+      setDocLoading(false)
+      setDocMetadata(null)
+      setMetadataLoading(false)
+      return
+    }
+
+    if (object['Registration Document']) {
+      const fetchDocLink = async () => {
+        setDocLoading(true)
+        try {
+          const response = await fetch(
+            `/api/documents/resolve?path=${encodeURIComponent(object['Registration Document'])}`
+          )
+          if (response.ok) {
+            const data = await response.json()
+            setDocLink(data.english_link || null)
+          } else {
+            setDocLink(null)
+          }
+        } catch {
+          setDocLink(null)
+        } finally {
+          setDocLoading(false)
+        }
+      }
+      fetchDocLink()
+    } else {
+      setDocLink(null)
+      setDocLoading(false)
+      setDocMetadata(null)
+      setMetadataLoading(false)
+    }
+
+    const fetchOrbitalState = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const url = `/api/objects/${encodeURIComponent(object['Registration Number'])}/orbital-state`
+        const response = await fetch(url)
+        if (!response.ok) {
+          const statusText = response.statusText || `HTTP ${response.status}`
+          throw new Error(statusText)
+        }
+        const data = await response.json()
+        setOrbitalState(data)
+        if (data.error) {
+          setError(data.error)
+        }
+      } catch (err) {
+        console.error('Orbital state fetch error:', err)
+        setError(`Error fetching orbital data: ${err.message}`)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchOrbitalState()
+  }, [object])
+
+  useEffect(() => {
+    if (docLink && !docMetadata && !metadataLoading) {
+      const fetchMetadata = async () => {
+        setMetadataLoading(true)
+        try {
+          const response = await fetch(
+            `/api/documents/metadata?url=${encodeURIComponent(docLink)}`
+          )
+          if (response.ok) {
+            const data = await response.json()
+            setDocMetadata(data)
+          }
+        } catch (err) {
+          console.error('Document metadata fetch error:', err)
+        } finally {
+          setMetadataLoading(false)
+        }
+      }
+      fetchMetadata()
+    }
+  }, [docLink, docMetadata, metadataLoading])
+
   if (!object) {
     return (
       <div className="detail-panel empty">
@@ -13,6 +108,12 @@ export default function DetailPanel({ object }) {
     if (value === null || value === undefined || value === '') return '—'
     if (typeof value === 'number') return value.toFixed(2)
     return String(value)
+  }
+
+  const ensureProtocol = (url) => {
+    if (!url) return url
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    return 'https://' + url
   }
 
   return (
@@ -65,30 +166,68 @@ export default function DetailPanel({ object }) {
 
         <div className="detail-section">
           <h3>Orbital Parameters</h3>
-          <div className="detail-row">
-            <span className="detail-label">Apogee</span>
-            <span className="detail-value">
-              {object['Apogee (km)'] ? `${formatValue(object['Apogee (km)'])} km` : '—'}
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="detail-label">Perigee</span>
-            <span className="detail-value">
-              {object['Perigee (km)'] ? `${formatValue(object['Perigee (km)'])} km` : '—'}
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="detail-label">Inclination</span>
-            <span className="detail-value">
-              {object['Inclination (degrees)'] ? `${formatValue(object['Inclination (degrees)'])}°` : '—'}
-            </span>
-          </div>
-          <div className="detail-row">
-            <span className="detail-label">Period</span>
-            <span className="detail-value">
-              {object['Period (minutes)'] ? `${formatValue(object['Period (minutes)'])} minutes` : '—'}
-            </span>
-          </div>
+          {loading && <p className="detail-loading">Loading orbital data...</p>}
+          {orbitalState && orbitalState.orbital_state && (
+            <div className="orbital-data">
+              <div className="detail-row">
+                <span className="detail-label">Data Source</span>
+                <span className="detail-value">{orbitalState.orbital_state.data_source}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Apogee</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.apogee_km)} km</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Perigee</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.perigee_km)} km</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Inclination</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.inclination_degrees)}°</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Period</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.period_minutes)} minutes</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Semi-major Axis</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.semi_major_axis_km)} km</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Eccentricity</span>
+                <span className="detail-value">{formatValue(orbitalState.orbital_state.eccentricity)}</span>
+              </div>
+            </div>
+          )}
+          {!loading && !orbitalState?.orbital_state && (
+            <>
+              <div className="detail-row">
+                <span className="detail-label">Apogee</span>
+                <span className="detail-value">
+                  {object['Apogee (km)'] ? `${formatValue(object['Apogee (km)'])} km` : '—'}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Perigee</span>
+                <span className="detail-value">
+                  {object['Perigee (km)'] ? `${formatValue(object['Perigee (km)'])} km` : '—'}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Inclination</span>
+                <span className="detail-value">
+                  {object['Inclination (degrees)'] ? `${formatValue(object['Inclination (degrees)'])}°` : '—'}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Period</span>
+                <span className="detail-value">
+                  {object['Period (minutes)'] ? `${formatValue(object['Period (minutes)'])} minutes` : '—'}
+                </span>
+              </div>
+            </>
+          )}
+          {error && <p className="detail-error">{error}</p>}
         </div>
 
         {object['GSO Location'] && (
@@ -111,14 +250,58 @@ export default function DetailPanel({ object }) {
         {object['Registration Document'] && object['Registration Document'] !== '' && (
           <div className="detail-section">
             <h3>Documentation</h3>
-            <a 
-              href={`https://www.unoosa.org${object['Registration Document']}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="detail-link"
-            >
-              View Registration Document
-            </a>
+            {docLoading && <p className="detail-loading">Finding document...</p>}
+            {!docLoading && docLink && (
+              <>
+                <a 
+                  href={docLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="detail-link"
+                >
+                  View Registration Document (PDF)
+                </a>
+                {metadataLoading && <p className="detail-loading">Extracting document information...</p>}
+                {docMetadata && docMetadata.metadata && (
+                  <div className="document-metadata">
+                    {docMetadata.metadata.owner_operator && (
+                      <div className="detail-row">
+                        <span className="detail-label">Owner/Operator</span>
+                        <span className="detail-value">{docMetadata.metadata.owner_operator}</span>
+                      </div>
+                    )}
+                    {docMetadata.metadata.website && (
+                      <div className="detail-row">
+                        <span className="detail-label">Website</span>
+                        <a 
+                          href={ensureProtocol(docMetadata.metadata.website)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="detail-link-inline"
+                        >
+                          {docMetadata.metadata.website}
+                        </a>
+                      </div>
+                    )}
+                    {docMetadata.metadata.launch_vehicle && (
+                      <div className="detail-row">
+                        <span className="detail-label">Launch Vehicle (from document)</span>
+                        <span className="detail-value">{docMetadata.metadata.launch_vehicle}</span>
+                      </div>
+                    )}
+                    {docMetadata.metadata.place_of_launch && (
+                      <div className="detail-row">
+                        <span className="detail-label">Place of Launch (from document)</span>
+                        <span className="detail-value">{docMetadata.metadata.place_of_launch}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+            {!docLoading && !docLink && (
+              <p className="detail-error">Document not found</p>
+            )}
           </div>
         )}
       </div>
