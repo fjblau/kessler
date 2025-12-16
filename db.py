@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 import os
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27018")
 DB_NAME = "kessler"
 COLLECTION_NAME = "satellites"
 
