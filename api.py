@@ -1,8 +1,6 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import pandas as pd
-import numpy as np
 from typing import Optional, List, Dict
 import json
 from datetime import datetime, timezone
@@ -18,14 +16,10 @@ from db import (
     count_satellites, get_all_countries, get_all_statuses, create_satellite_document
 )
 
-mongodb_available = False
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mongodb_available
-    mongodb_available = connect_mongodb()
-    if not mongodb_available:
-        print("⚠️  MongoDB not available, will use CSV fallback")
+    if not connect_mongodb():
+        raise RuntimeError("Failed to connect to MongoDB. MongoDB is required.")
     yield
     disconnect_mongodb()
 
@@ -39,16 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-try:
-    df = pd.read_csv("unoosa_registry_with_norad.csv")
-    print("✓ Loaded enriched registry with NORAD IDs")
-except FileNotFoundError:
-    print("⚠️  Using fallback: unoosa_registry.csv (NORAD IDs not available)")
-    df = pd.read_csv("unoosa_registry.csv")
 
-norad_id_map = {
-    "2023-155H": "58023",
-}
 
 tle_cache = {}
 tle_cache_time = {}
@@ -411,240 +396,7 @@ def get_document_metadata(url: str) -> Dict:
     return result
 
 
-@app.get("/api/objects")
-def get_objects(
-    search: Optional[str] = None,
-    country: Optional[str] = None,
-    function: Optional[str] = None,
-    apogee_min: Optional[float] = None,
-    apogee_max: Optional[float] = None,
-    perigee_min: Optional[float] = None,
-    perigee_max: Optional[float] = None,
-    inclination_min: Optional[float] = None,
-    inclination_max: Optional[float] = None,
-    skip: int = 0,
-    limit: int = 100,
-):
-    result = df.copy()
-    
-    print(f"DEBUG: country={country}, function={function}, search={search}")
-    
-    if search and search.strip():
-        result = result[
-            result["Registration Number"].str.contains(search, case=False, na=False) |
-            result["Object Name"].str.contains(search, case=False, na=False)
-        ]
-    
-    if country and country.strip():
-        print(f"DEBUG: Filtering by country: '{country.strip()}'")
-        print(f"DEBUG: Available countries: {result['Country of Origin'].unique()[:5]}")
-        result = result[result["Country of Origin"].str.strip() == country.strip()]
-        print(f"DEBUG: After country filter: {len(result)} records")
-    
-    if function and function.strip():
-        result = result[result["Function"].str.strip() == function.strip()]
-    
-    if apogee_min is not None:
-        result = result[(result["Apogee (km)"].isna()) | (result["Apogee (km)"] >= apogee_min)]
-    
-    if apogee_max is not None:
-        result = result[(result["Apogee (km)"].isna()) | (result["Apogee (km)"] <= apogee_max)]
-    
-    if perigee_min is not None:
-        result = result[(result["Perigee (km)"].isna()) | (result["Perigee (km)"] >= perigee_min)]
-    
-    if perigee_max is not None:
-        result = result[(result["Perigee (km)"].isna()) | (result["Perigee (km)"] <= perigee_max)]
-    
-    if inclination_min is not None:
-        result = result[(result["Inclination (degrees)"].isna()) | (result["Inclination (degrees)"] >= inclination_min)]
-    
-    if inclination_max is not None:
-        result = result[(result["Inclination (degrees)"].isna()) | (result["Inclination (degrees)"] <= inclination_max)]
-    
-    total = len(result)
-    
-    records = result.iloc[skip:skip+limit].to_dict(orient="records")
-    for record in records:
-        for key, value in record.items():
-            if pd.isna(value):
-                record[key] = None
-    
-    return {
-        "total": total,
-        "skip": skip,
-        "limit": limit,
-        "data": records
-    }
 
-@app.get("/api/filters")
-def get_filters():
-    filters_data = {
-        "countries": sorted(list(set([str(x).strip() for x in df["Country of Origin"].unique() if pd.notna(x)]))),
-        "functions": sorted(list(set([str(x).strip() for x in df["Function"].unique() if pd.notna(x)]))),
-    }
-    
-    apogee_vals = df[df["Apogee (km)"].notna()]["Apogee (km)"]
-    if len(apogee_vals) > 0:
-        filters_data["apogee_range"] = [float(apogee_vals.min()), float(apogee_vals.max())]
-    else:
-        filters_data["apogee_range"] = [0, 1000]
-    
-    perigee_vals = df[df["Perigee (km)"].notna()]["Perigee (km)"]
-    if len(perigee_vals) > 0:
-        filters_data["perigee_range"] = [float(perigee_vals.min()), float(perigee_vals.max())]
-    else:
-        filters_data["perigee_range"] = [0, 1000]
-    
-    inclination_vals = df[df["Inclination (degrees)"].notna()]["Inclination (degrees)"]
-    if len(inclination_vals) > 0:
-        filters_data["inclination_range"] = [float(inclination_vals.min()), float(inclination_vals.max())]
-    else:
-        filters_data["inclination_range"] = [0, 180]
-    
-    return filters_data
-
-@app.get("/api/objects/{registration_number}")
-def get_object(registration_number: str):
-    obj = df[df["Registration Number"] == registration_number]
-    if len(obj) == 0:
-        return {"error": "Not found"}
-    record = obj.iloc[0].to_dict()
-    for key, value in record.items():
-        if pd.isna(value):
-            record[key] = None
-    return record
-
-
-@app.get("/api/objects/{registration_number}/orbital-state")
-def get_orbital_state(registration_number: str):
-    """
-    Get current orbital state for an object using TLE data
-    Includes orbital parameters and links to live tracking data
-    """
-    current_time = time.time()
-    
-    if registration_number in orbital_state_cache:
-        cache_age = current_time - orbital_state_cache_time.get(registration_number, 0)
-        if cache_age < CACHE_TTL:
-            return orbital_state_cache[registration_number]
-    
-    obj = df[df["Registration Number"] == registration_number]
-    if len(obj) == 0:
-        return {"error": "Object not found"}
-    
-    obj_data = obj.iloc[0]
-    intl_designator = str(obj_data['International Designator']).strip() if pd.notna(obj_data['International Designator']) else ""
-    
-    if not intl_designator:
-        return {
-            "registration_number": registration_number,
-            "object_name": None if pd.isna(obj_data['Object Name']) else obj_data['Object Name'],
-            "error": "No International Designator available for TLE lookup",
-            "data_source": "Static registry only"
-        }
-    
-    def get_value(val):
-        return None if pd.isna(val) else val
-    
-    response = {
-        "registration_number": registration_number,
-        "object_name": get_value(obj_data['Object Name']),
-        "international_designator": intl_designator,
-        "country_of_origin": get_value(obj_data['Country of Origin']),
-        "function": get_value(obj_data['Function']),
-        "date_of_launch": get_value(obj_data['Date of Launch']),
-        "status": get_value(obj_data['Status']),
-    }
-    
-    doc_metadata = None
-    has_complete_orbital_params = False
-    
-    if pd.notna(obj_data['Registration Document']) and obj_data['Registration Document']:
-        doc_link_result = resolve_document_link(obj_data['Registration Document'])
-        if doc_link_result.get('english_link'):
-            doc_metadata = extract_document_metadata(doc_link_result['english_link'])
-            if doc_metadata and all(k in doc_metadata for k in ['apogee_km', 'perigee_km', 'inclination_degrees', 'nodal_period_minutes']):
-                has_complete_orbital_params = True
-                response["orbital_state"] = {
-                    "apogee_km": float(doc_metadata['apogee_km']),
-                    "perigee_km": float(doc_metadata['perigee_km']),
-                    "inclination_degrees": float(doc_metadata['inclination_degrees']),
-                    "period_minutes": float(doc_metadata['nodal_period_minutes']),
-                    "data_source": "Registration document"
-                }
-    
-    if not has_complete_orbital_params:
-        tle_data = fetch_tle_data()
-        found_tle = None
-        norad_id = None
-        
-        norad_format = convert_to_norad_format(intl_designator)
-        if norad_format:
-            if norad_format in tle_data:
-                found_tle = tle_data[norad_format]
-                norad_id = norad_format
-            elif not norad_format[-1].isalpha():
-                for piece in 'ABCDEFGH':
-                    candidate = norad_format + piece
-                    if candidate in tle_data:
-                        found_tle = tle_data[candidate]
-                        norad_id = candidate
-                        break
-        
-        if not found_tle and intl_designator in tle_data:
-            found_tle = tle_data[intl_designator]
-            norad_id = intl_designator
-        
-        if found_tle:
-            sat_name, tle_line1, tle_line2 = found_tle
-            orbital_params = calculate_orbital_state(tle_line1, tle_line2)
-            response["orbital_state"] = orbital_params
-            response["tle_source"] = "CelesTrak"
-            response["tracking_available"] = True
-            response["norad_id"] = norad_id
-            if norad_id:
-                response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
-        else:
-            response["error"] = "TLE data not found (satellite may be inactive/decayed)"
-            response["tracking_available"] = False
-            if pd.notna(obj_data['Apogee (km)']):
-                response["orbital_state"] = {
-                    "apogee_km": float(obj_data['Apogee (km)']),
-                    "perigee_km": float(obj_data['Perigee (km)']),
-                    "inclination_degrees": float(obj_data['Inclination (degrees)']),
-                    "period_minutes": float(obj_data['Period (minutes)']),
-                    "data_source": "Static registry"
-                }
-            
-            # Check for NORAD ID from CSV or map
-            if pd.notna(obj_data.get('NORAD_CAT_ID')):
-                norad_id = str(int(obj_data['NORAD_CAT_ID']))
-                response["norad_id"] = norad_id
-                response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
-                response["tracking_available"] = True
-            elif intl_designator in norad_id_map:
-                norad_id = norad_id_map[intl_designator]
-                response["norad_id"] = norad_id
-                response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
-                response["tracking_available"] = True
-    else:
-        # Check for NORAD ID from CSV or map
-        if pd.notna(obj_data.get('NORAD_CAT_ID')):
-            norad_id = str(int(obj_data['NORAD_CAT_ID']))
-            response["norad_id"] = norad_id
-            response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
-            response["tracking_available"] = True
-        elif intl_designator in norad_id_map:
-            norad_id = norad_id_map[intl_designator]
-            response["norad_id"] = norad_id
-            response["n2yo_url"] = f"https://www.n2yo.com/satellite/?s={norad_id}"
-            response["tracking_available"] = True
-    
-    orbital_state_cache[registration_number] = response
-    orbital_state_cache_time[registration_number] = current_time
-    
-    return response
 
 
 @app.get("/v2/health")
@@ -652,7 +404,6 @@ def health_check():
     """Check API and database health"""
     return {
         "status": "ok",
-        "mongodb_available": mongodb_available,
         "api_version": "v2"
     }
 
@@ -666,201 +417,118 @@ def search_satellites_v2(
     skip: int = Query(0, ge=0)
 ):
     """
-    Search satellites in MongoDB (with CSV fallback).
+    Search satellites in MongoDB.
     Supports filtering by country and status.
     """
-    if mongodb_available:
-        results = search_satellites(
-            query=q or "",
-            country=country,
-            status=status,
-            limit=limit,
-            skip=skip
-        )
+    results = search_satellites(
+        query=q or "",
+        country=country,
+        status=status,
+        limit=limit,
+        skip=skip
+    )
+    
+    # Convert MongoDB documents to JSON-safe format
+    data = []
+    for r in results:
+        canonical = r.get("canonical", {})
+        # Filter out MongoDB special fields and NaN values
+        safe_canonical = {}
+        for k, v in canonical.items():
+            if k != '_id' and not (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+                safe_canonical[k] = v
         
-        # Convert MongoDB documents to JSON-safe format
-        data = []
-        for r in results:
-            canonical = r.get("canonical", {})
-            # Filter out MongoDB special fields and NaN values
-            safe_canonical = {}
-            for k, v in canonical.items():
-                if k != '_id' and not (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
-                    safe_canonical[k] = v
-            
-            data.append({
-                "identifier": r.get("identifier"),
-                "canonical": safe_canonical,
-                "sources_available": r.get("metadata", {}).get("sources_available", [])
-            })
-        
-        return {
-            "source": "mongodb",
-            "count": len(results),
-            "skip": skip,
-            "limit": limit,
-            "data": data
-        }
-    else:
-        filters = df.copy()
-        
-        if q:
-            q_lower = q.lower()
-            mask = (
-                filters['Object Name'].astype(str).str.contains(q_lower, case=False, na=False) |
-                filters['International Designator'].astype(str).str.contains(q_lower, case=False, na=False) |
-                filters['Registration Number'].astype(str).str.contains(q_lower, case=False, na=False)
-            )
-            filters = filters[mask]
-        
-        if country:
-            filters = filters[filters['Country of Origin'].str.contains(country, case=False, na=False)]
-        
-        if status:
-            filters = filters[filters['Status'].str.contains(status, case=False, na=False)]
-        
-        results = filters.iloc[skip:skip+limit].to_dict('records')
-        
-        return {
-            "source": "csv_fallback",
-            "count": len(results),
-            "skip": skip,
-            "limit": limit,
-            "data": results
-        }
+        data.append({
+            "identifier": r.get("identifier"),
+            "canonical": safe_canonical,
+            "sources_available": r.get("metadata", {}).get("sources_available", [])
+        })
+    
+    return {
+        "count": len(results),
+        "skip": skip,
+        "limit": limit,
+        "data": data
+    }
 
 
 @app.get("/v2/satellite/{identifier}")
 def get_satellite_v2(identifier: str):
     """
-    Get detailed satellite information from MongoDB (with CSV fallback).
+    Get detailed satellite information from MongoDB.
     Identifier can be international designator or registration number.
     """
-    if mongodb_available:
-        sat = find_satellite(international_designator=identifier) or find_satellite(registration_number=identifier)
-        
-        if sat:
-            # Filter out MongoDB special fields and NaN values
-            canonical = sat.get("canonical", {})
-            safe_canonical = {}
-            for k, v in canonical.items():
-                if k != '_id':
-                    if isinstance(v, dict):
-                        # Handle nested orbit dict
-                        safe_v = {}
-                        for kk, vv in v.items():
-                            if not (isinstance(vv, float) and (math.isnan(vv) or math.isinf(vv))):
-                                safe_v[kk] = vv
-                        safe_canonical[k] = safe_v
-                    elif not (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
-                        safe_canonical[k] = v
-            
-            sources = sat.get("sources", {})
-            safe_sources = {}
-            for k, v in sources.items():
-                if k != '_id' and isinstance(v, dict):
+    sat = find_satellite(international_designator=identifier) or find_satellite(registration_number=identifier)
+    
+    if sat:
+        # Filter out MongoDB special fields and NaN values
+        canonical = sat.get("canonical", {})
+        safe_canonical = {}
+        for k, v in canonical.items():
+            if k != '_id':
+                if isinstance(v, dict):
+                    # Handle nested orbit dict
                     safe_v = {}
                     for kk, vv in v.items():
-                        if kk != '_id' and not (isinstance(vv, float) and (math.isnan(vv) or math.isinf(vv))):
+                        if not (isinstance(vv, float) and (math.isnan(vv) or math.isinf(vv))):
                             safe_v[kk] = vv
-                    safe_sources[k] = safe_v
-            
-            return {
-                "source": "mongodb",
-                "data": {
-                    "identifier": sat.get("identifier"),
-                    "canonical": safe_canonical,
-                    "sources": safe_sources,
-                    "metadata": sat.get("metadata", {})
-                }
-            }
-        else:
-            return {"error": "Satellite not found", "source": "mongodb"}, 404
-    else:
-        obj_data = df[
-            (df['International Designator'] == identifier) |
-            (df['Registration Number'] == identifier)
-        ]
+                    safe_canonical[k] = safe_v
+                elif not (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+                    safe_canonical[k] = v
         
-        if obj_data.empty:
-            return {"error": "Satellite not found", "source": "csv"}, 404
+        sources = sat.get("sources", {})
+        safe_sources = {}
+        for k, v in sources.items():
+            if k != '_id' and isinstance(v, dict):
+                safe_v = {}
+                for kk, vv in v.items():
+                    if kk != '_id' and not (isinstance(vv, float) and (math.isnan(vv) or math.isinf(vv))):
+                        safe_v[kk] = vv
+                safe_sources[k] = safe_v
         
-        obj_data = obj_data.iloc[0]
         return {
-            "source": "csv_fallback",
-            "data": obj_data.to_dict()
+            "data": {
+                "identifier": sat.get("identifier"),
+                "canonical": safe_canonical,
+                "sources": safe_sources,
+                "metadata": sat.get("metadata", {})
+            }
         }
+    else:
+        return {"error": "Satellite not found"}, 404
 
 
 @app.get("/v2/countries")
 def get_countries_v2():
     """Get list of all countries with satellite registrations"""
-    if mongodb_available:
-        countries = get_all_countries()
-        return {
-            "source": "mongodb",
-            "count": len(countries),
-            "countries": sorted([c for c in countries if c and c.strip()])
-        }
-    else:
-        countries = df['Country of Origin'].unique()
-        return {
-            "source": "csv_fallback",
-            "count": len(countries),
-            "countries": sorted([c for c in countries if pd.notna(c) and str(c).strip()])
-        }
+    countries = get_all_countries()
+    return {
+        "count": len(countries),
+        "countries": sorted([c for c in countries if c and c.strip()])
+    }
 
 
 @app.get("/v2/statuses")
 def get_statuses_v2():
     """Get list of all satellite statuses"""
-    if mongodb_available:
-        statuses = get_all_statuses()
-        return {
-            "source": "mongodb",
-            "count": len(statuses),
-            "statuses": sorted([s for s in statuses if s and s.strip()])
-        }
-    else:
-        statuses = df['Status'].unique()
-        return {
-            "source": "csv_fallback",
-            "count": len(statuses),
-            "statuses": sorted([s for s in statuses if pd.notna(s) and str(s).strip()])
-        }
+    statuses = get_all_statuses()
+    return {
+        "count": len(statuses),
+        "statuses": sorted([s for s in statuses if s and s.strip()])
+    }
 
 
 @app.get("/v2/stats")
 def get_stats_v2(country: Optional[str] = Query(None), status: Optional[str] = Query(None)):
     """Get statistics about satellites"""
-    if mongodb_available:
-        total = count_satellites()
-        filtered = count_satellites(country=country, status=status) if (country or status) else total
-        
-        return {
-            "source": "mongodb",
-            "total_satellites": total,
-            "filtered_count": filtered,
-            "filters_applied": {
-                "country": country,
-                "status": status
-            }
+    total = count_satellites()
+    filtered = count_satellites(country=country, status=status) if (country or status) else total
+    
+    return {
+        "total_satellites": total,
+        "filtered_count": filtered,
+        "filters_applied": {
+            "country": country,
+            "status": status
         }
-    else:
-        filters = df.copy()
-        
-        if country:
-            filters = filters[filters['Country of Origin'].str.contains(country, case=False, na=False)]
-        
-        if status:
-            filters = filters[filters['Status'].str.contains(status, case=False, na=False)]
-        
-        return {
-            "source": "csv_fallback",
-            "total_satellites": len(df),
-            "filtered_count": len(filters),
-            "filters_applied": {
-                "country": country,
-                "status": status
-            }
-        }
+    }
