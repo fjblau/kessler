@@ -8,3 +8,6 @@ __pycache__/
 .vscode/
 .venv/
 venv/
+
+docker-compose.override.yml
+mongodb_backup/

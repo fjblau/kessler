@@ -33,23 +33,70 @@ For each field, the system uses the value from the highest-priority source that 
 
 ### Prerequisites
 
-- MongoDB 4.0+ running on `localhost:27017` (default)
-- Python 3.11+
+- **Docker Desktop** (required) - [Download here](https://www.docker.com/products/docker-desktop)
+- **Python 3.11+**
+- **MongoDB Database Tools** (optional, for data migration) - [Download here](https://www.mongodb.com/try/download/database-tools)
 
-### Setup Steps
+### Quick Start
 
 1. **Install pymongo**:
    ```bash
    pip install -r requirements-mongodb.txt
    ```
 
-2. **Verify MongoDB is running**:
+2. **Create environment configuration**:
    ```bash
-   # MongoDB should be accessible at localhost:27017
-   mongosh localhost:27017
-   # Or test from Python:
-   python3 -c "from pymongo import MongoClient; MongoClient('localhost', 27017).admin.command('ping'); print('✓ Connected')"
+   # Copy the example environment file
+   cp .env.example .env
+   
+   # The default configuration uses Docker MongoDB on port 27018
+   # MONGO_URI=mongodb://localhost:27018
    ```
+
+3. **Start all services** (MongoDB, API, React):
+   ```bash
+   ./start.sh
+   ```
+   
+   This script will:
+   - Check Docker is installed and running
+   - Start MongoDB container on port 27018
+   - Wait for MongoDB to be ready
+   - Start the API server
+   - Start the React development server
+
+4. **Verify MongoDB is running**:
+   ```bash
+   # Using the helper script
+   ./scripts/mongodb.sh status
+   
+   # Or directly with Docker
+   docker compose ps mongodb
+   ```
+
+### Manual MongoDB Management
+
+Use the provided helper script for common MongoDB operations:
+
+```bash
+# Start MongoDB
+./scripts/mongodb.sh start
+
+# Stop MongoDB
+./scripts/mongodb.sh stop
+
+# View logs
+./scripts/mongodb.sh logs
+
+# Open MongoDB shell
+./scripts/mongodb.sh shell
+
+# Reset all data (requires confirmation)
+./scripts/mongodb.sh reset
+
+# Check status
+./scripts/mongodb.sh status
+```
 
 ## Data Import
 
@@ -68,6 +115,56 @@ python3 import_to_mongodb.py
   ```
 
 This creates documents in the `kessler.satellites` collection with the UNOOSA data in the `sources.unoosa` section and derives the canonical data.
+
+## Migrating from Local MongoDB
+
+If you have an existing local MongoDB installation with data, you can migrate to Docker MongoDB using the provided migration script.
+
+### Automatic Migration
+
+```bash
+# Run the migration script
+./scripts/migrate_data.sh
+```
+
+This script will:
+1. Export data from local MongoDB (port 27017)
+2. Start Docker MongoDB (port 27018)
+3. Import the data to Docker MongoDB
+4. Verify the migration
+
+After successful migration:
+1. Create `.env` file: `echo "MONGO_URI=mongodb://localhost:27018" > .env`
+2. Test the API to verify everything works
+3. Optionally stop/uninstall local MongoDB
+
+### Manual Migration
+
+If you prefer to migrate manually:
+
+```bash
+# 1. Export from local MongoDB
+mongodump --uri="mongodb://localhost:27017" --db=kessler --out=./mongodb_backup
+
+# 2. Start Docker MongoDB
+docker compose up -d mongodb
+
+# 3. Import to Docker MongoDB
+mongorestore --uri="mongodb://localhost:27018" --db=kessler ./mongodb_backup/kessler
+
+# 4. Verify the data
+docker compose exec mongodb mongosh kessler --eval "db.satellites.countDocuments({})"
+
+# 5. Update your .env file
+echo "MONGO_URI=mongodb://localhost:27018" > .env
+```
+
+### Port Strategy
+
+- **Local MongoDB**: Runs on default port `27017`
+- **Docker MongoDB**: Runs on port `27018`
+- Both can run simultaneously during migration
+- No conflicts, allowing safe testing before switching
 
 ## API Endpoints
 
@@ -309,36 +406,116 @@ This allows updating the frontend gradually.
 
 ## Troubleshooting
 
+### Docker Issues
+
+**Docker not installed:**
+```bash
+# Check if Docker is installed
+docker --version
+
+# If not installed, download from:
+# https://www.docker.com/products/docker-desktop
+```
+
+**Docker not running:**
+```bash
+# Check if Docker daemon is running
+docker info
+
+# If not running:
+# - macOS/Windows: Start Docker Desktop application
+# - Linux: sudo systemctl start docker
+```
+
+**Port 27018 already in use:**
+```bash
+# Check what's using port 27018
+lsof -i:27018
+
+# Option 1: Stop the conflicting service
+# Option 2: Change Docker port in docker-compose.yml
+#   ports:
+#     - "27019:27017"  # Use different port
+#   Then update MONGO_URI in .env
+```
+
 ### MongoDB Connection Issues
 
 ```bash
-# Test MongoDB connection
-mongosh localhost:27017
+# Test Docker MongoDB connection
+docker compose exec mongodb mongosh --eval "db.adminCommand('ping')"
 
-# Check if MongoDB is running
-ps aux | grep mongod
+# Check if MongoDB container is running
+docker compose ps mongodb
+
+# View MongoDB logs
+docker compose logs mongodb
+
+# Restart MongoDB
+docker compose restart mongodb
+```
+
+### Environment Configuration Issues
+
+**Missing .env file:**
+```bash
+# Create from template
+cp .env.example .env
+
+# Verify MONGO_URI is set correctly
+cat .env
+```
+
+**Wrong MongoDB URI:**
+```bash
+# For Docker MongoDB (default)
+echo "MONGO_URI=mongodb://localhost:27018" > .env
+
+# For local MongoDB (if not using Docker)
+echo "MONGO_URI=mongodb://localhost:27017" > .env
 ```
 
 ### Import Fails
 
 ```bash
 # Verify CSV file exists
-ls -lh unoosa_registry.csv
+ls -lh data/unoosa_registry.csv
 
 # Check Python can read it
-python3 -c "import pandas as pd; df = pd.read_csv('unoosa_registry.csv'); print(f'{len(df)} rows')"
+python3 -c "import pandas as pd; df = pd.read_csv('data/unoosa_registry.csv'); print(f'{len(df)} rows')"
+
+# Import with environment variable
+MONGO_URI=mongodb://localhost:27018 python3 import_to_mongodb.py --clear
 ```
 
 ### API Falls Back to CSV
 
 If MongoDB is unavailable, the API automatically falls back to CSV. Check:
-- MongoDB is running: `mongosh localhost:27017`
+- Docker MongoDB is running: `docker compose ps mongodb`
+- `.env` file exists with correct `MONGO_URI`
 - API logs show connection status: Check `/v2/health` endpoint
+
+### Data Persistence Issues
+
+```bash
+# Check if volume exists
+docker volume ls | grep mongodb_data
+
+# Inspect volume
+docker volume inspect new-task-30de_mongodb_data
+
+# If data is lost, volumes may have been deleted with:
+# docker compose down -v  (the -v flag removes volumes)
+# 
+# Always use: docker compose down  (without -v to keep data)
+```
 
 ## Next Steps
 
-1. Install pymongo: `pip install -r requirements-mongodb.txt`
-2. Ensure MongoDB is running on localhost:27017
-3. Import data: `python3 import_to_mongodb.py --clear`
-4. Test endpoints: `curl http://localhost:8000/v2/health`
-5. Update React app to use `/v2/*` endpoints
+1. **Install Docker Desktop**: [Download](https://www.docker.com/products/docker-desktop)
+2. **Install pymongo**: `pip install -r requirements-mongodb.txt`
+3. **Create environment file**: `cp .env.example .env`
+4. **Start all services**: `./start.sh`
+5. **Import data**: `python3 import_to_mongodb.py --clear`
+6. **Test endpoints**: `curl http://localhost:8000/v2/health`
+7. **Update React app to use `/v2/*` endpoints** (if not already done)

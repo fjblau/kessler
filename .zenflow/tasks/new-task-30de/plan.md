@@ -30,7 +30,7 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Create Docker Compose Configuration
+### [x] Step: Create Docker Compose Configuration
 
 Create `docker-compose.yml` with MongoDB 7.0 service:
 - Port mapping: `27018:27017` (host:container) - **avoids conflict with local MongoDB on port 27017**
@@ -48,7 +48,7 @@ docker compose ps
 
 ---
 
-### [ ] Step: Create Environment Configuration Template
+### [x] Step: Create Environment Configuration Template
 
 Create `.env.example` with:
 - `MONGO_URI=mongodb://localhost:27018` (Docker MongoDB port - avoids conflict with local)
@@ -68,7 +68,7 @@ cat .gitignore | grep mongodb_backup
 
 ---
 
-### [ ] Step: Update Startup Script
+### [x] Step: Update Startup Script
 
 Modify `start.sh` to:
 1. Check Docker availability
@@ -86,7 +86,7 @@ curl http://localhost:8000/v2/health
 
 ---
 
-### [ ] Step: Create MongoDB Management Helper Script (Optional)
+### [x] Step: Create MongoDB Management Helper Script (Optional)
 
 Create `scripts/mongodb.sh` with commands:
 - `start`, `stop`, `reset`, `logs`, `shell`
@@ -102,7 +102,7 @@ Make executable: `chmod +x scripts/mongodb.sh`
 
 ---
 
-### [ ] Step: Update Documentation
+### [x] Step: Update Documentation
 
 Update `docs/MONGODB_SETUP.md`:
 - Replace local MongoDB installation instructions with Docker setup
@@ -117,7 +117,7 @@ Update `docs/MONGODB_SETUP.md`:
 
 ---
 
-### [ ] Step: Import Data from Exported Local MongoDB
+### [x] Step: Import Data from Exported Local MongoDB
 
 Create migration path for existing local MongoDB data:
 
@@ -159,7 +159,7 @@ curl http://localhost:8000/v2/stats
 
 ---
 
-### [ ] Step: Integration Testing
+### [x] Step: Integration Testing
 
 Comprehensive testing of the Docker-based setup:
 1. Start from clean state: `docker compose down -v`
@@ -178,7 +178,7 @@ Comprehensive testing of the Docker-based setup:
 
 ---
 
-### [ ] Step: Final Report
+### [x] Step: Final Report
 
 Write completion report to `.zenflow/tasks/new-task-30de/report.md` with:
 - Summary of implementation
