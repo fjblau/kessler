@@ -1,0 +1,236 @@
+# Technical Specification: Docker-based MongoDB Integration
+
+## Task Difficulty: **Medium**
+
+This task involves replacing the locally installed MongoDB instance with a Docker-based setup for improved portability and development environment consistency. The change requires coordinating Docker Compose configuration, connection settings, startup scripts, and documentation updates.
+
+---
+
+## Current State
+
+### MongoDB Integration
+- **Connection**: Currently uses locally installed MongoDB at `localhost:27017`
+- **Configuration**: Connection URI controlled via environment variable `MONGO_URI` in `db.py:7`
+  - Default: `mongodb://localhost:27017`
+  - Can be overridden via environment variable
+- **Database**: `kessler`
+- **Collection**: `satellites`
+- **Driver**: pymongo 4.0.0+ (`requirements-mongodb.txt`)
+
+### Project Structure
+- **API**: FastAPI backend in `api.py` with MongoDB lifespan management
+- **Database Layer**: `db.py` provides MongoDB connection, queries, and document management
+- **Startup**: `start.sh` launches API and React dev server (no MongoDB management)
+- **Dependencies**: Python 3.11, FastAPI, pymongo
+- **Environment**: macOS development environment
+
+### Current Limitations
+- Requires local MongoDB installation
+- Not portable across development environments
+- No standardized MongoDB version control
+- Manual MongoDB service management required
+- No data persistence guarantees across restarts
+
+---
+
+## Implementation Approach
+
+### 1. Docker Compose Configuration
+
+**Create `docker-compose.yml`** in project root with:
+- MongoDB 7.0 service (latest stable)
+- Port mapping: `27017:27017`
+- Named volume for data persistence: `mongodb_data`
+- Health check to ensure service readiness
+- Container name: `kessler-mongodb`
+- Restart policy: `unless-stopped` for resilience
+
+**Benefits**:
+- Single command to start MongoDB (`docker compose up -d`)
+- Version-controlled MongoDB version
+- Isolated environment
+- Automatic data persistence
+- Easy cleanup and reset
+
+### 2. Environment Configuration
+
+**Create `.env.example`** template with:
+- `MONGO_URI=mongodb://localhost:27017` (default for Docker setup)
+- Comments explaining purpose and customization options
+
+**Update `.gitignore`** to ensure:
+- `.env` already ignored (confirmed)
+- Add Docker-specific ignores:
+  - `docker-compose.override.yml` (for local customization)
+  - Any Docker volume data paths if needed
+
+**Connection Strategy**:
+- Keep existing `db.py` logic unchanged (already uses `MONGO_URI` env var)
+- Docker MongoDB accessible at `localhost:27017` (same as current setup)
+- No code changes required for connection logic
+
+### 3. Startup Script Enhancement
+
+**Update `start.sh`** to:
+1. Check if Docker is installed and running
+2. Start MongoDB via Docker Compose before starting API
+3. Wait for MongoDB health check (readiness probe)
+4. Continue with existing API and React startup flow
+5. Handle graceful shutdown (stop Docker containers on Ctrl+C)
+
+**Fallback behavior**:
+- If Docker not available, print helpful error message
+- Document how to use local MongoDB as alternative
+
+### 4. Helper Scripts (Optional but Recommended)
+
+**Create `scripts/mongodb.sh`** for common operations:
+- Start MongoDB: `./scripts/mongodb.sh start`
+- Stop MongoDB: `./scripts/mongodb.sh stop`
+- Reset data: `./scripts/mongodb.sh reset`
+- View logs: `./scripts/mongodb.sh logs`
+- Shell access: `./scripts/mongodb.sh shell`
+
+---
+
+## Files to Create/Modify
+
+### New Files
+1. **`docker-compose.yml`** - MongoDB service definition
+2. **`.env.example`** - Environment variable template
+3. **`scripts/mongodb.sh`** (optional) - MongoDB management utilities
+
+### Modified Files
+1. **`.gitignore`** - Add Docker-specific entries
+2. **`start.sh`** - Integrate Docker Compose MongoDB startup
+3. **`docs/MONGODB_SETUP.md`** - Update installation instructions for Docker
+
+### Unchanged Files
+- `db.py` - Already uses `MONGO_URI` env var, no changes needed
+- `api.py` - Connection logic unchanged
+- `requirements-mongodb.txt` - Dependencies unchanged
+
+---
+
+## Data Model / API Changes
+
+**No changes required** - This is purely an infrastructure change:
+- Database schema remains identical
+- API endpoints unchanged
+- Connection interface (`db.py`) unchanged
+- Only deployment mechanism changes (Docker vs local install)
+
+---
+
+## Verification Approach
+
+### 1. Docker Setup Verification
+```bash
+# Verify Docker Compose configuration is valid
+docker compose config
+
+# Start MongoDB service
+docker compose up -d mongodb
+
+# Check MongoDB is running and healthy
+docker compose ps
+docker compose logs mongodb
+```
+
+### 2. Connection Testing
+```bash
+# Test MongoDB connection from Python
+python3 -c "from pymongo import MongoClient; MongoClient('mongodb://localhost:27017').admin.command('ping'); print('✓ Connected')"
+
+# Import test data
+python3 import_to_mongodb.py --clear
+```
+
+### 3. API Integration Testing
+```bash
+# Start all services (MongoDB + API + React)
+./start.sh
+
+# Test health endpoint
+curl http://localhost:8000/v2/health
+
+# Test search endpoint
+curl http://localhost:8000/v2/search?q=ISS
+
+# Verify API connects to MongoDB successfully
+# Check logs show "Connected to MongoDB: kessler.satellites"
+```
+
+### 4. Data Persistence Testing
+```bash
+# Import data
+python3 import_to_mongodb.py --clear
+
+# Stop MongoDB
+docker compose down
+
+# Restart MongoDB
+docker compose up -d mongodb
+
+# Verify data still exists
+curl http://localhost:8000/v2/stats
+```
+
+### 5. Cleanup and Reset Testing
+```bash
+# Full cleanup (including volumes)
+docker compose down -v
+
+# Verify data is removed and fresh start works
+docker compose up -d mongodb
+python3 import_to_mongodb.py --clear
+```
+
+---
+
+## Implementation Risks and Considerations
+
+### Low Risk
+- Docker Compose is stable and widely used
+- MongoDB connection logic already abstracted via env var
+- No code changes to database layer required
+
+### Medium Risk
+- **Docker availability**: Users must have Docker installed
+  - **Mitigation**: Document Docker installation, provide fallback instructions for local MongoDB
+  
+- **Port conflicts**: Port 27017 might be in use
+  - **Mitigation**: Document how to customize port via `docker-compose.override.yml`
+
+- **Startup script complexity**: Adding Docker orchestration to shell script
+  - **Mitigation**: Keep changes minimal, add clear error messages, test on multiple shells (bash/zsh)
+
+### Considerations
+- **Performance**: Docker adds minimal overhead for database operations
+- **Development workflow**: Developers need Docker Desktop/Engine installed
+- **CI/CD**: Future deployment may need Docker Compose or Kubernetes
+- **Data migration**: Existing local MongoDB data won't automatically transfer
+  - **Solution**: Document export/import process if needed
+
+---
+
+## Success Criteria
+
+1. ✅ MongoDB runs in Docker container via `docker compose up -d`
+2. ✅ `start.sh` successfully orchestrates MongoDB, API, and React
+3. ✅ Data persists across container restarts
+4. ✅ All existing API endpoints work identically
+5. ✅ Documentation updated with Docker-based setup instructions
+6. ✅ Clean teardown via `docker compose down`
+7. ✅ `.env.example` provides clear configuration template
+
+---
+
+## Post-Implementation Benefits
+
+- **Portability**: Works on any system with Docker (macOS, Linux, Windows)
+- **Consistency**: All developers use same MongoDB version
+- **Isolation**: MongoDB isolated from host system
+- **Easy reset**: Quick database reset via `docker compose down -v`
+- **Production parity**: Similar to containerized production deployments
+- **Onboarding**: New developers need fewer manual installation steps

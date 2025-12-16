@@ -18,48 +18,121 @@ Do not make assumptions on important decisions — get clarification first.
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
 <!-- chat-id: f76a3c27-5dfc-4961-b707-4bcdc5a94e39 -->
 
-Assess the task's difficulty, as underestimating it leads to poor outcomes.
-- easy: Straightforward implementation, trivial bug fix or feature
-- medium: Moderate complexity, some edge cases or caveats to consider
-- hard: Complex logic, many caveats, architectural considerations, or high-risk changes
-
-Create a technical specification for the task that is appropriate for the complexity level:
-- Review the existing codebase architecture and identify reusable components.
-- Define the implementation approach based on established patterns in the project.
-- Identify all source code files that will be created or modified.
-- Define any necessary data model, API, or interface changes.
-- Describe verification steps using the project's test and lint commands.
-
-Save the output to `{@artifacts_path}/spec.md` with:
-- Technical context (language, dependencies)
-- Implementation approach
-- Source code structure changes
-- Data model / API / interface changes
-- Verification approach
-
-If the task is complex enough, create a detailed implementation plan based on `{@artifacts_path}/spec.md`:
-- Break down the work into concrete tasks (incrementable, testable milestones)
-- Each task should reference relevant contracts and include verification steps
-- Replace the Implementation step below with the planned tasks
-
-Rule of thumb for step size: each step should represent a coherent unit of work (e.g., implement a component, add an API endpoint, write tests for a module). Avoid steps that are too granular (single function).
-
-Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warrant this breakdown, keep the Implementation step below as is.
+✅ **Completed**: Created comprehensive technical specification at `.zenflow/tasks/new-task-30de/spec.md`
+- **Difficulty**: Medium
+- **Approach**: Docker Compose for MongoDB with minimal code changes
+- **Files to create**: `docker-compose.yml`, `.env.example`, optional `scripts/mongodb.sh`
+- **Files to modify**: `start.sh`, `.gitignore`, `docs/MONGODB_SETUP.md`
+- **Key insight**: No database layer code changes needed (already uses `MONGO_URI` env var)
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Create Docker Compose Configuration
 
-Implement the task according to the technical specification and general engineering best practices.
+Create `docker-compose.yml` with MongoDB 7.0 service:
+- Port mapping: `27017:27017`
+- Named volume `mongodb_data` for persistence
+- Health check for service readiness
+- Container name: `kessler-mongodb`
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase.
-3. Add and run relevant tests and linters.
-4. Perform basic manual verification if applicable.
-5. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+**Verification**:
+```bash
+docker compose config
+docker compose up -d mongodb
+docker compose ps
+```
+
+---
+
+### [ ] Step: Create Environment Configuration Template
+
+Create `.env.example` with:
+- `MONGO_URI=mongodb://localhost:27017` (default)
+- Documentation comments
+
+Update `.gitignore` with Docker-specific entries:
+- `docker-compose.override.yml`
+
+**Verification**:
+```bash
+# Verify .gitignore includes new entries
+cat .gitignore | grep docker-compose.override.yml
+```
+
+---
+
+### [ ] Step: Update Startup Script
+
+Modify `start.sh` to:
+1. Check Docker availability
+2. Start MongoDB via Docker Compose
+3. Wait for MongoDB health check
+4. Continue with existing API/React startup
+5. Handle graceful shutdown (stop containers on exit)
+
+**Verification**:
+```bash
+./start.sh
+# Should start MongoDB, API, and React successfully
+curl http://localhost:8000/v2/health
+```
+
+---
+
+### [ ] Step: Create MongoDB Management Helper Script (Optional)
+
+Create `scripts/mongodb.sh` with commands:
+- `start`, `stop`, `reset`, `logs`, `shell`
+
+Make executable: `chmod +x scripts/mongodb.sh`
+
+**Verification**:
+```bash
+./scripts/mongodb.sh start
+./scripts/mongodb.sh logs
+./scripts/mongodb.sh shell
+```
+
+---
+
+### [ ] Step: Update Documentation
+
+Update `docs/MONGODB_SETUP.md`:
+- Replace local MongoDB installation instructions with Docker setup
+- Add Docker prerequisites
+- Add troubleshooting section for Docker-specific issues
+- Document data persistence and volume management
+
+**Verification**:
+- Review updated documentation for accuracy
+- Follow installation steps in a fresh environment if possible
+
+---
+
+### [ ] Step: Integration Testing
+
+Comprehensive testing of the Docker-based setup:
+1. Start from clean state: `docker compose down -v`
+2. Start all services: `./start.sh`
+3. Import test data: `python3 import_to_mongodb.py --clear`
+4. Test API endpoints: `/v2/health`, `/v2/search?q=ISS`, `/v2/stats`
+5. Verify data persistence: stop and restart MongoDB, check data still exists
+6. Test cleanup: `docker compose down -v`
+
+**Verification**:
+- All API endpoints return expected results
+- Data persists across container restarts
+- Clean startup and shutdown work correctly
+
+---
+
+### [ ] Step: Final Report
+
+Write completion report to `.zenflow/tasks/new-task-30de/report.md` with:
+- Summary of implementation
+- Testing results
+- Any issues encountered and solutions
+- Usage instructions for developers
