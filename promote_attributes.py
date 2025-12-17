@@ -167,6 +167,39 @@ def parse_filter(filter_str: str) -> Dict[str, Any]:
     return query
 
 
+def validate_field_path(field_path: str) -> bool:
+    """
+    Validate that a field path is well-formed.
+    
+    Args:
+        field_path: Field path to validate
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    if not field_path or not field_path.strip():
+        return False
+    
+    # Check for invalid characters
+    invalid_chars = ["$", " ", "\n", "\t"]
+    for char in invalid_chars:
+        if char in field_path:
+            print(f"Error: Field path contains invalid character '{char}': {field_path}", file=sys.stderr)
+            return False
+    
+    # Check for consecutive dots
+    if ".." in field_path:
+        print(f"Error: Field path contains consecutive dots: {field_path}", file=sys.stderr)
+        return False
+    
+    # Check for leading/trailing dots
+    if field_path.startswith(".") or field_path.endswith("."):
+        print(f"Error: Field path starts or ends with dot: {field_path}", file=sys.stderr)
+        return False
+    
+    return True
+
+
 def validate_arguments(args) -> bool:
     """
     Validate parsed arguments.
@@ -183,6 +216,13 @@ def validate_arguments(args) -> bool:
     
     if not args.target_field:
         print("Error: target_field is required", file=sys.stderr)
+        return False
+    
+    # Validate field paths
+    if not validate_field_path(args.source_field):
+        return False
+    
+    if not validate_field_path(args.target_field):
         return False
     
     if args.filter:
@@ -340,7 +380,49 @@ def update_document_in_db(collection, doc: Dict[str, Any], verbose: bool = False
         return False
 
 
-def confirm_operation(count: int, source_field: str, target_field: str, dry_run: bool = False) -> bool:
+def check_target_field_conflicts(collection, query: Dict[str, Any], target_field: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Check if target field already exists in matching documents.
+    
+    Args:
+        collection: MongoDB collection object
+        query: MongoDB query dictionary
+        target_field: Target field path to check
+        limit: Number of documents to sample for checking
+    
+    Returns:
+        Dictionary with conflict information:
+        {
+            "total_conflicts": int,
+            "sample_conflicts": list of doc_ids
+        }
+    """
+    # Build query to check for existing target field
+    conflict_query = query.copy()
+    conflict_query[target_field] = {"$exists": True}
+    
+    count = collection.count_documents(conflict_query)
+    
+    if count == 0:
+        return {"total_conflicts": 0, "sample_conflicts": []}
+    
+    # Get sample of conflicting documents
+    sample = list(collection.find(conflict_query, {"_id": 1}).limit(limit))
+    sample_ids = [str(doc["_id"]) for doc in sample]
+    
+    return {
+        "total_conflicts": count,
+        "sample_conflicts": sample_ids
+    }
+
+
+def confirm_operation(
+    count: int,
+    source_field: str,
+    target_field: str,
+    dry_run: bool = False,
+    conflicts: Optional[Dict[str, Any]] = None
+) -> bool:
     """
     Prompt user to confirm large batch operations.
     
@@ -349,6 +431,7 @@ def confirm_operation(count: int, source_field: str, target_field: str, dry_run:
         source_field: Source field path
         target_field: Target field path
         dry_run: Whether this is a dry-run
+        conflicts: Optional conflict information from check_target_field_conflicts
     
     Returns:
         True if user confirms, False otherwise
@@ -358,6 +441,13 @@ def confirm_operation(count: int, source_field: str, target_field: str, dry_run:
     print(f"\n⚠  About to {operation} {count:,} document(s)")
     print(f"   Source: {source_field}")
     print(f"   Target: {target_field}")
+    
+    # Show conflict warning if present
+    if conflicts and conflicts["total_conflicts"] > 0:
+        print(f"\n⚠  WARNING: {conflicts['total_conflicts']} document(s) already have {target_field}")
+        print("   These values will be OVERWRITTEN!")
+        if conflicts["sample_conflicts"]:
+            print(f"   Sample IDs: {', '.join(conflicts['sample_conflicts'][:5])}")
     
     response = input("\nProceed? (y/N): ").strip().lower()
     return response in ["y", "yes"]
@@ -498,9 +588,17 @@ def main():
             print(f"\nRetrieved {len(documents)} documents for processing")
             print(f"Sample document IDs: {[doc.get('_id') for doc in documents[:3]]}")
         
+        # Check for target field conflicts
+        conflicts = check_target_field_conflicts(collection, query, target_field, limit=10)
+        
+        if conflicts["total_conflicts"] > 0:
+            print(f"\n⚠  Note: {conflicts['total_conflicts']} document(s) already have {target_field}")
+            if not args.dry_run:
+                print("   These values will be overwritten.")
+        
         # Confirmation prompt for large operations (>10 documents)
         if len(documents) > 10 and not args.yes:
-            if not confirm_operation(len(documents), source_field, target_field, args.dry_run):
+            if not confirm_operation(len(documents), source_field, target_field, args.dry_run, conflicts):
                 print("\nOperation cancelled by user.")
                 disconnect_mongodb()
                 sys.exit(0)
