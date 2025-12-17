@@ -12,6 +12,8 @@ export default function DetailPanel({ object }) {
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [showDataRecord, setShowDataRecord] = useState(false)
   const [fullDocument, setFullDocument] = useState(null)
+  const [currentTle, setCurrentTle] = useState(null)
+  const [tleLoading, setTleLoading] = useState(false)
 
   useEffect(() => {
     if (!object) {
@@ -23,6 +25,8 @@ export default function DetailPanel({ object }) {
       setMetadataLoading(false)
       setShowDataRecord(false)
       setFullDocument(null)
+      setCurrentTle(null)
+      setTleLoading(false)
       return
     }
 
@@ -111,6 +115,39 @@ export default function DetailPanel({ object }) {
     }
   }, [docLink])
 
+  useEffect(() => {
+    if (!object || !fullDocument?.canonical?.norad_cat_id) {
+      setCurrentTle(null)
+      return
+    }
+
+    const fetchCurrentTle = async () => {
+      setTleLoading(true)
+      try {
+        const response = await fetch(
+          `/v2/tle/${encodeURIComponent(fullDocument.canonical.norad_cat_id)}`
+        )
+        if (response.ok) {
+          const data = await response.json()
+          if (data.data) {
+            setCurrentTle(data.data)
+          } else {
+            setCurrentTle({ _notFound: true, message: data.message })
+          }
+        } else {
+          setCurrentTle(null)
+        }
+      } catch (err) {
+        console.error('TLE fetch error:', err)
+        setCurrentTle(null)
+      } finally {
+        setTleLoading(false)
+      }
+    }
+
+    fetchCurrentTle()
+  }, [fullDocument?.canonical?.norad_cat_id])
+
   if (!object) {
     return (
       <div className="detail-panel empty">
@@ -136,14 +173,26 @@ export default function DetailPanel({ object }) {
       <div className="detail-header">
         <h2>{object['Object Name'] || object['Registration Number']}</h2>
         <p className="detail-reg">{object['Registration Number']}</p>
-        {fullDocument && (
-          <button 
-            className="show-data-record-button"
-            onClick={() => setShowDataRecord(true)}
-          >
-            Show Data Record
-          </button>
-        )}
+        <div className="header-buttons">
+          {fullDocument && (
+            <button 
+              className="show-data-record-button"
+              onClick={() => setShowDataRecord(true)}
+            >
+              Show Data Record
+            </button>
+          )}
+          {orbitalState?.n2yo_url && (
+            <a 
+              href={orbitalState.n2yo_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="live-tracking-button"
+            >
+              Track on N2YO
+            </a>
+          )}
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -261,17 +310,37 @@ export default function DetailPanel({ object }) {
           {error && <p className="detail-error">{error}</p>}
         </div>
 
-        {orbitalState?.n2yo_url && (
+        {object['Secretariat Remarks'] && (
           <div className="detail-section">
-            <h3>Live Tracking</h3>
-            <a 
-              href={orbitalState.n2yo_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="detail-link"
-            >
-              Track on N2YO (NORAD {orbitalState.norad_id})
-            </a>
+            <h3>Remarks</h3>
+            <p className="detail-remarks">{object['Secretariat Remarks']}</p>
+          </div>
+        )}
+
+        {fullDocument?.canonical?.norad_cat_id && (
+          <div className="detail-section">
+            <h3>Two-Line Element (TLE)</h3>
+            {tleLoading && <p className="detail-loading">Loading current TLE...</p>}
+            {currentTle?._notFound ? (
+              <p className="detail-info">{currentTle.message}</p>
+            ) : currentTle?.line1 || currentTle?.line2 ? (
+              <div className="tle-data">
+                {currentTle.line1 && (
+                  <div className="detail-row tle-row">
+                    <span className="detail-label">Line 1</span>
+                    <span className="detail-value tle-value">{currentTle.line1}</span>
+                  </div>
+                )}
+                {currentTle.line2 && (
+                  <div className="detail-row tle-row">
+                    <span className="detail-label">Line 2</span>
+                    <span className="detail-value tle-value">{currentTle.line2}</span>
+                  </div>
+                )}
+              </div>
+            ) : !tleLoading && !currentTle ? (
+              <p className="detail-info">TLE data not available for this satellite</p>
+            ) : null}
           </div>
         )}
 
@@ -282,13 +351,6 @@ export default function DetailPanel({ object }) {
               <span className="detail-label">GSO Location</span>
               <span className="detail-value">{formatValue(object['GSO Location'])}</span>
             </div>
-          </div>
-        )}
-
-        {object['Secretariat Remarks'] && (
-          <div className="detail-section">
-            <h3>Remarks</h3>
-            <p className="detail-remarks">{object['Secretariat Remarks']}</p>
           </div>
         )}
 
