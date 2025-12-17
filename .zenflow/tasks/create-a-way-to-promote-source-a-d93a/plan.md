@@ -43,20 +43,25 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Implement CLI Script Skeleton (promote_attributes.py)
+### [x] Step: Implement CLI Script Skeleton (promote_attributes.py)
+<!-- chat-id: ac24db9d-ffd0-4f75-a5c0-564adca6e190 -->
 
-Create `promote_attributes.py` with:
-
-1. Argument parsing using `argparse`:
+**Completed**: Created `promote_attributes.py` with full CLI skeleton:
+1. **Argument parsing** using `argparse`:
    - Positional: source_field, target_field
    - Optional: --dry-run, --all, --filter, --yes, --reason, --verbose
-2. MongoDB connection setup
-3. Basic validation (required arguments provided)
-4. Help text and usage examples
+2. **MongoDB connection setup** using db.py functions
+3. **Basic validation** for required arguments and filter format
+4. **Help text and usage examples** in docstring and epilog
 
 **Verification**:
-- Run with `--help` flag
-- Test argument parsing with various input combinations
+- ✓ --help flag displays proper usage information
+- ✓ Required arguments validated
+- ✓ Optional flags work correctly (--dry-run, --verbose, --all, --yes, --reason, --filter)
+- ✓ Filter parsing validates format (field=value)
+- ✓ Field path normalization (auto-adds "sources." prefix)
+- ✓ MongoDB connection and document counting works
+- ✓ Successfully tested with actual MongoDB instance (found 14,890 documents)
 
 ---
 
