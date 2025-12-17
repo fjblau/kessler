@@ -90,20 +90,32 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Implement Field Promotion Logic
+### [x] Step: Implement Field Promotion Logic
+<!-- chat-id: 37b32bd8-7a77-4cd5-9ea3-25e84b2feadb -->
 
-Implement core promotion functionality:
-
-1. Extract value from source field using `get_nested_field()`
-2. Set value to target field using `set_nested_field()`
-3. Record transformation using `record_transformation()`
-4. Update document in MongoDB
-5. Handle errors gracefully (skip document, log error)
+**Completed**: Implemented core field promotion functionality with three new functions:
+1. **`promote_document()`**: Core promotion logic that:
+   - Extracts value from source field using `get_nested_field()`
+   - Sets value to target field using `set_nested_field()`
+   - Records transformation using `record_transformation()`
+   - Handles errors gracefully (returns status dict with success/error)
+2. **`update_document_in_db()`**: Updates document in MongoDB using `replace_one()`
+3. **`process_documents()`**: Batch processor that:
+   - Iterates through documents
+   - Calls `promote_document()` for each
+   - Updates database (unless dry-run mode)
+   - Collects statistics (updated, skipped, errors)
+   - Provides progress output
 
 **Verification**:
-- Test with single document
-- Verify canonical field updated
-- Verify transformation history recorded
+- ✓ Test with single document (test_promotion.py passed)
+- ✓ Verified canonical field updated correctly
+- ✓ Verified transformation history recorded with all metadata (timestamp, source, target, value, reason)
+- ✓ Tested dry-run mode (no database changes made)
+- ✓ Tested actual promotion (document updated successfully in MongoDB)
+- ✓ Tested batch processing (5 documents processed successfully)
+- ✓ Tested error handling (missing source field returns 0 documents)
+- ✓ Verified custom reason appears in transformation history
 
 ---
 
