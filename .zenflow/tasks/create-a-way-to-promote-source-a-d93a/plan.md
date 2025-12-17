@@ -29,17 +29,17 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Implement Core Helper Functions (db.py)
+### [x] Step: Implement Core Helper Functions (db.py)
+<!-- chat-id: 99be571b-b64b-4f0c-92fc-647b67ac6f32 -->
 
-Add helper functions to `db.py` for nested field access and transformation tracking:
-
-1. **`get_nested_field(obj, path)`**: Safely access nested dictionary fields using dot notation (e.g., `"sources.kaggle.orbital_band"`)
-2. **`set_nested_field(obj, path, value)`**: Safely set nested dictionary fields using dot notation
-3. **`record_transformation(doc, source_field, target_field, value)`**: Add transformation record to `metadata.transformations` array
+**Completed**: Added three helper functions to `db.py`:
+1. **`get_nested_field(obj, path)`**: Safely access nested dictionary fields using dot notation
+2. **`set_nested_field(obj, path, value)`**: Safely set nested dictionary fields using dot notation  
+3. **`record_transformation(doc, source_field, target_field, value, reason)`**: Add transformation record to `metadata.transformations` array
 
 **Verification**:
-- Test with sample document structures
-- Verify edge cases: missing intermediate keys, null values, deeply nested paths
+- ✓ All tests passed (test_helpers_standalone.py)
+- ✓ Verified edge cases: missing intermediate keys, null values, deeply nested paths, non-dict values
 
 ---
 
