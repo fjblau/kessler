@@ -5,21 +5,66 @@ Source Attribute Promotion Script
 Promotes specific attributes from source nodes to canonical fields in MongoDB documents.
 Tracks all transformations in the document's metadata.
 
-Examples:
-    # Promote single field
+USAGE:
+    python promote_attributes.py <source_field> <target_field> [options]
+
+ARGUMENTS:
+    source_field    Source field path (e.g., kaggle.orbital_band, sources.kaggle.orbital_band)
+    target_field    Target field path (e.g., canonical.orbital_band)
+
+OPTIONS:
+    --dry-run       Preview changes without applying to database
+    --all           Process all matching documents (default: 5 samples)
+    --filter        Filter documents using "field=value" syntax
+    --yes           Skip confirmation prompts for large batches
+    --reason        Add custom reason to transformation history
+    -v, --verbose   Enable detailed logging
+
+EXAMPLES:
+    # Basic promotion (processes 5 sample documents by default)
     python promote_attributes.py kaggle.orbital_band canonical.orbital_band
     
-    # Dry-run mode (preview without applying)
+    # Preview changes without applying (dry-run mode)
     python promote_attributes.py --dry-run kaggle.orbital_band canonical.orbital_band
     
-    # Filter by identifier
-    python promote_attributes.py --filter "identifier=NORAD-25544" kaggle.orbital_band canonical.orbital_band
+    # Process single document by identifier
+    python promote_attributes.py --filter "identifier=2025-206B" kaggle.orbital_band canonical.orbital_band
     
-    # Apply to all matching documents without confirmation
+    # Process all documents from specific country
+    python promote_attributes.py --all --filter "canonical.country_of_origin=USA" kaggle.orbital_band canonical.orbital_band
+    
+    # Process all matching documents without confirmation
     python promote_attributes.py --all --yes kaggle.orbital_band canonical.orbital_band
     
     # Add custom reason to transformation history
     python promote_attributes.py --reason "Kaggle has more accurate orbital band data" kaggle.orbital_band canonical.orbital_band
+    
+    # Verbose mode for debugging
+    python promote_attributes.py -v --dry-run kaggle.orbital_band canonical.orbital_band
+    
+    # Nested target fields
+    python promote_attributes.py kaggle.apogee canonical.orbit.apogee_km
+    
+    # Multiple filters
+    python promote_attributes.py --filter "canonical.object_type=PAYLOAD,identifier=2025-206B" kaggle.orbital_band canonical.orbital_band
+
+FEATURES:
+    - Automatic field path normalization (kaggle.field → sources.kaggle.field)
+    - Dry-run mode for safe previewing
+    - Confirmation prompts for large batches (>10 documents)
+    - Conflict detection (warns if target field already exists)
+    - Progress reporting for large operations (>20 documents)
+    - Comprehensive transformation history tracking
+    - Support for nested fields using dot notation
+    - Flexible filtering by any field
+
+TRANSFORMATION HISTORY:
+    All promotions are recorded in metadata.transformations array with:
+    - timestamp: When the promotion occurred
+    - source_field: Source field path
+    - target_field: Target field path
+    - value: The promoted value
+    - reason: Optional custom reason
 """
 
 import argparse
