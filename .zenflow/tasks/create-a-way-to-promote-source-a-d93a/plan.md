@@ -65,18 +65,28 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Implement Document Query and Filtering
+### [x] Step: Implement Document Query and Filtering
+<!-- chat-id: c7db1c7f-a580-4e3a-8759-e7cbb0101083 -->
 
-Add functionality to query and filter documents:
-
-1. Parse filter expressions (e.g., `"identifier=NORAD-12345"`, `"canonical.country_of_origin=USA"`)
-2. Build MongoDB query from filter
-3. Query documents that have the source field
-4. Handle cases where source field doesn't exist
+**Completed**: Implemented comprehensive document query and filtering functionality:
+1. **Enhanced `parse_filter()`**: Parse filter expressions with support for:
+   - Simple equality: `"identifier=NORAD-12345"`
+   - Multiple filters: `"field1=value1,field2=value2"`
+   - Numeric values (auto-conversion): `"count=123"`, `"altitude=350.5"`
+   - Nested fields: `"canonical.country_of_origin=USA"`
+2. **Added `build_query()`**: Build MongoDB query from source field and optional filters
+3. **Added `query_documents()`**: Query and retrieve matching documents with optional limit
+4. **Handle missing source field**: Returns 0 documents when source field doesn't exist
 
 **Verification**:
-- Test various filter patterns
-- Verify correct document selection
+- ✓ All unit tests passed (test_query_filtering.py)
+- ✓ Tested with actual MongoDB instance:
+  - No filter: Found 14,890 documents
+  - Single filter: `identifier=2025-206B` → 1 document
+  - Nested filter: `canonical.country_of_origin=Russian Federation` → 214 documents
+  - Multiple filters: Both combined → 1 document
+  - --all flag: Retrieved all 214 documents (vs. default 5)
+- ✓ Edge cases: empty filter, invalid format (raises ValueError), missing source field
 
 ---
 

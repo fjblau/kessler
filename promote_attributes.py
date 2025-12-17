@@ -125,20 +125,46 @@ def parse_filter(filter_str: str) -> Dict[str, Any]:
     """
     Parse filter string into MongoDB query.
     
+    Supports multiple formats:
+    - Simple equality: "field=value"
+    - Multiple filters: "field1=value1,field2=value2"
+    - Numeric values: "field=123"
+    
     Args:
         filter_str: Filter in "field=value" format
     
     Returns:
         MongoDB query dictionary
     """
-    if "=" not in filter_str:
-        raise ValueError(f"Invalid filter format: {filter_str}. Expected 'field=value'")
+    if not filter_str:
+        return {}
     
-    field, value = filter_str.split("=", 1)
-    field = field.strip()
-    value = value.strip()
+    query = {}
     
-    return {field: value}
+    # Split by comma for multiple filters
+    filters = [f.strip() for f in filter_str.split(",")]
+    
+    for filter_part in filters:
+        if "=" not in filter_part:
+            raise ValueError(f"Invalid filter format: {filter_part}. Expected 'field=value'")
+        
+        field, value = filter_part.split("=", 1)
+        field = field.strip()
+        value = value.strip()
+        
+        # Try to convert to number if possible
+        try:
+            if "." in value:
+                value = float(value)
+            else:
+                value = int(value)
+        except ValueError:
+            # Keep as string
+            pass
+        
+        query[field] = value
+    
+    return query
 
 
 def validate_arguments(args) -> bool:
@@ -167,6 +193,58 @@ def validate_arguments(args) -> bool:
             return False
     
     return True
+
+
+def build_query(source_field: str, filter_str: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Build MongoDB query to find documents with the source field.
+    
+    Args:
+        source_field: Normalized source field path
+        filter_str: Optional filter string in "field=value" format
+    
+    Returns:
+        MongoDB query dictionary
+    """
+    query = {}
+    
+    # Add user-provided filters first
+    if filter_str:
+        query.update(parse_filter(filter_str))
+    
+    # Add source field existence check
+    query[source_field] = {"$exists": True, "$ne": None}
+    
+    return query
+
+
+def query_documents(collection, query: Dict[str, Any], limit: Optional[int] = None, verbose: bool = False) -> List[Dict[str, Any]]:
+    """
+    Query documents from MongoDB collection.
+    
+    Args:
+        collection: MongoDB collection object
+        query: MongoDB query dictionary
+        limit: Optional limit on number of documents to return
+        verbose: Enable verbose logging
+    
+    Returns:
+        List of matching documents
+    """
+    if verbose:
+        print(f"Querying with: {query}")
+    
+    cursor = collection.find(query)
+    
+    if limit is not None:
+        cursor = cursor.limit(limit)
+    
+    documents = list(cursor)
+    
+    if verbose:
+        print(f"Retrieved {len(documents)} documents")
+    
+    return documents
 
 
 def main():
@@ -200,17 +278,13 @@ def main():
         
         collection = get_satellites_collection()
         
-        query = {}
-        if args.filter:
-            query = parse_filter(args.filter)
-            if args.verbose:
-                print(f"Filter query: {query}")
-        
-        query[source_field] = {"$exists": True, "$ne": None}
+        # Build query
+        query = build_query(source_field, args.filter)
         
         if args.verbose:
-            print(f"Final query: {query}")
+            print(f"MongoDB query: {query}")
         
+        # Count matching documents
         count = collection.count_documents(query)
         print(f"\nFound {count:,} documents with {source_field}")
         
@@ -222,7 +296,16 @@ def main():
         if args.dry_run:
             print("\n[DRY-RUN MODE] No changes will be applied.\n")
         
-        print("\nSetup complete. Ready to process documents.")
+        # Query documents (limit to 5 for now as a preview)
+        limit = 5 if not args.all else None
+        documents = query_documents(collection, query, limit=limit, verbose=args.verbose)
+        
+        if args.verbose:
+            print(f"\nRetrieved {len(documents)} documents for processing")
+            print(f"Sample document IDs: {[doc.get('_id') for doc in documents[:3]]}")
+        
+        print(f"\nReady to process {len(documents)} document(s).")
+        print("Setup complete. Ready to process documents.")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
