@@ -119,19 +119,28 @@ Do not make assumptions on important decisions — get clarification first.
 
 ---
 
-### [ ] Step: Implement Batch Processing and Progress Reporting
+### [x] Step: Implement Batch Processing and Progress Reporting
+<!-- chat-id: a87116eb-b87f-4946-ae53-ed932501dcd5 -->
 
-Add batch processing capabilities:
-
-1. Process multiple documents efficiently
-2. Show progress bar or counter for large batches
-3. Collect statistics (updated, skipped, errors)
-4. Implement confirmation prompts for large operations (>10 documents)
+**Completed**: Implemented comprehensive batch processing and progress reporting:
+1. **`confirm_operation()`**: Prompts user for confirmation on large batches (>10 docs)
+   - Shows document count, source/target fields, operation type
+   - Returns boolean (True = proceed, False = cancel)
+   - Can be bypassed with `--yes` flag
+2. **Enhanced `process_documents()`**:
+   - Progress indicator for batches > 20 documents
+   - Shows progress every 10 documents with percentage
+   - Limits output for large batches (first 5 docs + progress counters)
+   - Automatically adjusts based on batch size and verbose mode
+3. **Main function integration**: Calls confirmation before processing large batches
 
 **Verification**:
-- Test with small batch (< 10 documents)
-- Test with large batch (> 100 documents)
-- Verify statistics reporting
+- ✓ Small batch (5 docs): No confirmation, all updates shown
+- ✓ Large batch (967 docs) with --yes: No confirmation, progress every 10 docs
+- ✓ Large batch without --yes: Would show confirmation prompt
+- ✓ Statistics correctly collected and displayed (total, updated/skipped, errors)
+- ✓ Progress reporting: "Progress: N/Total (X.X%)" every 10 documents
+- ✓ All tests passed (test_batch_processing.py)
 
 ---
 

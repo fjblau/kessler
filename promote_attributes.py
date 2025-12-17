@@ -340,6 +340,29 @@ def update_document_in_db(collection, doc: Dict[str, Any], verbose: bool = False
         return False
 
 
+def confirm_operation(count: int, source_field: str, target_field: str, dry_run: bool = False) -> bool:
+    """
+    Prompt user to confirm large batch operations.
+    
+    Args:
+        count: Number of documents to process
+        source_field: Source field path
+        target_field: Target field path
+        dry_run: Whether this is a dry-run
+    
+    Returns:
+        True if user confirms, False otherwise
+    """
+    operation = "preview" if dry_run else "update"
+    
+    print(f"\n⚠  About to {operation} {count:,} document(s)")
+    print(f"   Source: {source_field}")
+    print(f"   Target: {target_field}")
+    
+    response = input("\nProceed? (y/N): ").strip().lower()
+    return response in ["y", "yes"]
+
+
 def process_documents(
     collection,
     documents: List[Dict[str, Any]],
@@ -377,11 +400,19 @@ def process_documents(
         "errors": 0
     }
     
-    print(f"\nProcessing {len(documents)} document(s)...")
+    total = len(documents)
+    print(f"\nProcessing {total} document(s)...")
+    
+    # Show progress indicator for batches > 20
+    show_progress = total > 20 and not verbose
     
     for i, doc in enumerate(documents, 1):
         if verbose:
-            print(f"\n[{i}/{len(documents)}] Processing document {doc.get('_id')}")
+            print(f"\n[{i}/{total}] Processing document {doc.get('_id')}")
+        elif show_progress and i % 10 == 0:
+            # Show progress every 10 documents
+            percent = (i / total) * 100
+            print(f"  Progress: {i}/{total} ({percent:.1f}%)")
         
         result = promote_document(doc, source_field, target_field, reason, verbose)
         
@@ -393,15 +424,20 @@ def process_documents(
         
         if dry_run:
             stats["skipped"] += 1
-            if not verbose:
+            if not verbose and (i <= 5 or total <= 10):
+                # Show first 5 for large batches, all for small batches
                 print(f"  [DRY-RUN] Would update {result['doc_id']}: {source_field} → {target_field} = {result['value']}")
         else:
             if update_document_in_db(collection, doc, verbose):
                 stats["updated"] += 1
-                if not verbose:
+                if not verbose and (i <= 5 or total <= 10):
+                    # Show first 5 for large batches, all for small batches
                     print(f"  ✓ Updated {result['doc_id']}: {source_field} → {target_field} = {result['value']}")
             else:
                 stats["errors"] += 1
+    
+    if show_progress:
+        print(f"  Progress: {total}/{total} (100.0%)")
     
     return stats
 
@@ -461,6 +497,13 @@ def main():
         if args.verbose:
             print(f"\nRetrieved {len(documents)} documents for processing")
             print(f"Sample document IDs: {[doc.get('_id') for doc in documents[:3]]}")
+        
+        # Confirmation prompt for large operations (>10 documents)
+        if len(documents) > 10 and not args.yes:
+            if not confirm_operation(len(documents), source_field, target_field, args.dry_run):
+                print("\nOperation cancelled by user.")
+                disconnect_mongodb()
+                sys.exit(0)
         
         stats = process_documents(
             collection,
