@@ -19,6 +19,8 @@ export default function DataTable({ objects, selectedObject, onRowClick, loading
             <th>Country of Origin</th>
             <th>Date of Launch</th>
             <th>Status</th>
+            <th>Orbital Band</th>
+            <th>Congestion Risk</th>
             <th className="cell-number">Apogee (km)</th>
             <th className="cell-number">Perigee (km)</th>
             <th className="cell-number">Inclination (°)</th>
@@ -45,6 +47,8 @@ export default function DataTable({ objects, selectedObject, onRowClick, loading
               <td>{obj['Country of Origin'] || '—'}</td>
               <td>{obj['Date of Launch'] || '—'}</td>
               <td>{obj['Status'] || '—'}</td>
+              <td>{obj['Orbital Band'] || '—'}</td>
+              <td>{obj['Congestion Risk'] || '—'}</td>
               <td className="cell-number">{obj['Apogee (km)'] ? obj['Apogee (km)'].toFixed(2) : '—'}</td>
               <td className="cell-number">{obj['Perigee (km)'] ? obj['Perigee (km)'].toFixed(2) : '—'}</td>
               <td className="cell-number">{obj['Inclination (degrees)'] ? obj['Inclination (degrees)'].toFixed(2) : '—'}</td>

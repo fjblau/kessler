@@ -34,7 +34,7 @@ EXAMPLES:
     python promote_attributes.py --all --filter "canonical.country_of_origin=USA" kaggle.orbital_band canonical.orbital_band
     
     # Process all matching documents without confirmation
-    python promote_attributes.py --all --yes kaggle.orbital_band canonical.orbital_band
+    
     
     # Add custom reason to transformation history
     python promote_attributes.py --reason "Kaggle has more accurate orbital band data" kaggle.orbital_band canonical.orbital_band

@@ -218,7 +218,8 @@ def update_canonical(doc: Dict[str, Any]):
         "registration_number", "norad_cat_id", "date_of_launch", "function", "status",
         "registration_document", "un_registered", "gso_location",
         "date_of_decay_or_change", "secretariat_remarks", "external_website",
-        "launch_vehicle", "place_of_launch", "object_type", "rcs", "orbital_band"
+        "launch_vehicle", "place_of_launch", "object_type", "rcs", "orbital_band",
+        "congestion_risk"
     ]
     
     for field in canonical_fields:
@@ -279,6 +280,7 @@ def search_satellites(
     country: Optional[str] = None,
     status: Optional[str] = None,
     orbital_band: Optional[str] = None,
+    congestion_risk: Optional[str] = None,
     limit: int = 100,
     skip: int = 0
 ) -> List[Dict[str, Any]]:
@@ -304,6 +306,9 @@ def search_satellites(
     if orbital_band:
         filters["canonical.orbital_band"] = {"$regex": orbital_band, "$options": "i"}
     
+    if congestion_risk:
+        filters["canonical.congestion_risk"] = {"$regex": congestion_risk, "$options": "i"}
+    
     return list(
         collection.find(filters)
         .skip(skip)
@@ -315,7 +320,8 @@ def count_satellites(
     query: Optional[str] = None,
     country: Optional[str] = None,
     status: Optional[str] = None,
-    orbital_band: Optional[str] = None
+    orbital_band: Optional[str] = None,
+    congestion_risk: Optional[str] = None
 ) -> int:
     """Count satellites with optional filters"""
     collection = get_satellites_collection()
@@ -339,6 +345,9 @@ def count_satellites(
     if orbital_band:
         filters["canonical.orbital_band"] = {"$regex": orbital_band, "$options": "i"}
     
+    if congestion_risk:
+        filters["canonical.congestion_risk"] = {"$regex": congestion_risk, "$options": "i"}
+    
     return collection.count_documents(filters)
 
 
@@ -358,6 +367,12 @@ def get_all_orbital_bands() -> List[str]:
     """Get list of unique orbital bands"""
     collection = get_satellites_collection()
     return collection.distinct("canonical.orbital_band")
+
+
+def get_all_congestion_risks() -> List[str]:
+    """Get list of unique congestion risks"""
+    collection = get_satellites_collection()
+    return collection.distinct("canonical.congestion_risk")
 
 
 def clear_collection():

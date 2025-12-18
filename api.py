@@ -14,7 +14,8 @@ import pdfplumber
 import io
 from db import (
     connect_mongodb, disconnect_mongodb, find_satellite, search_satellites,
-    count_satellites, get_all_countries, get_all_statuses, get_all_orbital_bands, create_satellite_document
+    count_satellites, get_all_countries, get_all_statuses, get_all_orbital_bands, 
+    get_all_congestion_risks, create_satellite_document
 )
 
 try:
@@ -421,18 +422,20 @@ def search_satellites_v2(
     country: Optional[str] = Query(None, description="Filter by country"),
     status: Optional[str] = Query(None, description="Filter by status"),
     orbital_band: Optional[str] = Query(None, description="Filter by orbital band"),
+    congestion_risk: Optional[str] = Query(None, description="Filter by congestion risk"),
     limit: int = Query(100, ge=1, le=1000),
     skip: int = Query(0, ge=0)
 ):
     """
     Search satellites in MongoDB.
-    Supports filtering by country, status, and orbital band.
+    Supports filtering by country, status, orbital band, and congestion risk.
     """
     results = search_satellites(
         query=q or "",
         country=country,
         status=status,
         orbital_band=orbital_band,
+        congestion_risk=congestion_risk,
         limit=limit,
         skip=skip
     )
@@ -441,7 +444,8 @@ def search_satellites_v2(
         query=q or "",
         country=country,
         status=status,
-        orbital_band=orbital_band
+        orbital_band=orbital_band,
+        congestion_risk=congestion_risk
     )
     
     # Convert MongoDB documents to JSON-safe format
@@ -541,6 +545,16 @@ def get_orbital_bands_v2():
     return {
         "count": len(orbital_bands),
         "orbital_bands": sorted([b for b in orbital_bands if b and b.strip()])
+    }
+
+
+@app.get("/v2/congestion-risks")
+def get_congestion_risks_v2():
+    """Get list of all congestion risks"""
+    congestion_risks = get_all_congestion_risks()
+    return {
+        "count": len(congestion_risks),
+        "congestion_risks": sorted([r for r in congestion_risks if r and r.strip()])
     }
 
 

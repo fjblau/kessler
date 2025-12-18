@@ -82,6 +82,20 @@ export default function Filters({ filters, filterOptions, onFilterChange }) {
         </select>
       </div>
 
+      <div className="filter-group">
+        <label htmlFor="congestion-risk">Congestion Risk</label>
+        <select
+          id="congestion-risk"
+          value={localFilters.congestion_risk || ''}
+          onChange={(e) => handleChange('congestion_risk', e.target.value)}
+        >
+          <option value="">All Congestion Risks</option>
+          {filterOptions.congestion_risks?.map(risk => (
+            <option key={risk} value={risk}>{risk}</option>
+          ))}
+        </select>
+      </div>
+
       {filterOptions.apogee_range && (
         <div className="filter-group">
           <label>Apogee Range (km)</label>

@@ -26,19 +26,22 @@ function App() {
 
   const fetchFilterOptions = async () => {
     try {
-      const [countriesRes, statusesRes, orbitalBandsRes] = await Promise.all([
+      const [countriesRes, statusesRes, orbitalBandsRes, congestionRisksRes] = await Promise.all([
         fetch('/v2/countries'),
         fetch('/v2/statuses'),
-        fetch('/v2/orbital-bands')
+        fetch('/v2/orbital-bands'),
+        fetch('/v2/congestion-risks')
       ])
       const countriesData = await countriesRes.json()
       const statusesData = await statusesRes.json()
       const orbitalBandsData = await orbitalBandsRes.json()
+      const congestionRisksData = await congestionRisksRes.json()
       
       setFilterOptions({
         countries: countriesData.countries || [],
         statuses: statusesData.statuses || [],
         orbital_bands: orbitalBandsData.orbital_bands || [],
+        congestion_risks: congestionRisksData.congestion_risks || [],
         apogee_range: [0, 100000],
         perigee_range: [0, 100000],
         inclination_range: [0, 180]
@@ -56,6 +59,7 @@ function App() {
     if (filters.country) params.append('country', filters.country)
     if (filters.status) params.append('status', filters.status)
     if (filters.orbital_band) params.append('orbital_band', filters.orbital_band)
+    if (filters.congestion_risk) params.append('congestion_risk', filters.congestion_risk)
     
     params.append('skip', pageNum * limit)
     params.append('limit', limit)
@@ -76,6 +80,8 @@ function App() {
           'Date of Launch': canonical.date_of_launch || '',
           'Function': canonical.function || '',
           'Status': canonical.status || '',
+          'Orbital Band': canonical.orbital_band || '',
+          'Congestion Risk': canonical.congestion_risk || '',
           'Apogee (km)': orbit.apogee_km,
           'Perigee (km)': orbit.perigee_km,
           'Inclination (degrees)': orbit.inclination_degrees,
